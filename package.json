@@ -1,7 +1,7 @@
 {
-  "name": "hongz-ai-server",
-  "version": "4.0.0",
-  "description": "Hongz AI WhatsApp Server (Premium Authority Mode)",
+  "name": "hongz-ai-hybrid",
+  "version": "4.2.0",
+  "description": "Hongz WhatsApp AI Hybrid (AI handle awal, admin takeover untuk closing besar)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,6 +10,7 @@
     "body-parser": "^1.20.2",
     "dotenv": "^16.4.5",
     "express": "^4.18.2",
+    "ioredis": "^5.3.2",
     "twilio": "^4.20.0"
   }
 }
