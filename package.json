@@ -1,15 +1,15 @@
 {
-  "name": "hongz-ai-engine",
+  "name": "hongz-ai-server",
   "version": "4.0.0",
-  "description": "Hongz AI Engine v4.0 (Twilio + OpenAI + Google Sheets Booking)",
-  "main": "service.js",
+  "description": "Hongz AI WhatsApp Server (Premium Authority Mode)",
+  "main": "server.js",
   "scripts": {
-    "start": "node service.js"
+    "start": "node server.js"
   },
   "dependencies": {
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.4.5",
     "express": "^4.18.2",
-    "googleapis": "^140.0.0",
-    "openai": "^4.0.0",
-    "twilio": "^4.0.0"
+    "twilio": "^4.20.0"
   }
 }
