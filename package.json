@@ -1,6 +1,6 @@
 {
   "name": "hongz-ai-server",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "AI WhatsApp Server for Hongz Bengkel",
   "main": "server.js",
   "scripts": {
