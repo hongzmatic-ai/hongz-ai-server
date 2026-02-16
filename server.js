@@ -1,245 +1,175 @@
-// service.js
-// Hongz AI Engine v4.0 - Premium Authority Mode
-// Focus: WhatsApp inbound -> classify -> respond -> push to workshop/towing
+// server.js
+const express = require("express");
+const bodyParser = require("body-parser");
+const twilio = require("twilio");
+require("dotenv").config();
 
-function norm(s = "") {
-  return String(s).toLowerCase().replace(/\s+/g, " ").trim();
-}
+const { generateReplyWithMeta, summarizeForAdmin } = require("./service");
+const {
+  rememberUser,
+  listUsers,
+  addMessage,
+  getMeta,
+  saveMeta,
+  scheduleFollowUp,
+  getFollowQueue,
+  saveFollowQueue,
+} = require("./memory");
 
-function containsAny(text, arr) {
-  return arr.some(k => text.includes(k));
-}
+const app = express();
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
 
-function moneyPolicyPremium() {
-  // NO hard numbers (anti-jebakan harga). Use positioning + diagnostic gate.
-  return [
-    "Untuk kendaraan premium, kami *tidak memberikan angka fix via chat* karena risiko salah estimasi tinggi dan sering berbeda jauh di lapangan.",
-    "Biaya final ditentukan setelah *scan data, uji tekanan, dan cek suhu oli transmisi* (sering terkait kelistrikan/TCM/ECU/charging system).",
-  ].join(" ");
-}
+const ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const FROM_WA = process.env.TWILIO_WHATSAPP_FROM; // format: whatsapp:+1415...
+const ADMIN_WA = process.env.ADMIN_WA || ""; // format: whatsapp:+62...
 
-function workshopCTA({ includeMaps = true } = {}) {
-  const lines = [];
-  lines.push("📍 *Arahan terbaik:* bawa unit ke workshop untuk diagnosa premium.");
-  if (includeMaps) {
-    lines.push("🧭 Lokasi (Google Maps): https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9");
+const twilioClient = (ACCOUNT_SID && AUTH_TOKEN) ? twilio(ACCOUNT_SID, AUTH_TOKEN) : null;
+
+app.get("/", (req, res) => res.send("Hongz AI Hybrid v4.2 running ✅"));
+
+app.post("/whatsapp/incoming", async (req, res) => {
+  const tw = new twilio.twiml.MessagingResponse();
+
+  try {
+    const incomingMsg = (req.body.Body || "").trim();
+    const fromUser = (req.body.From || "").trim(); // whatsapp:+62...
+
+    if (!incomingMsg) {
+      tw.message("Halo! Ketik keluhan singkat ya. Contoh: *panas gak bisa jalan* / *jedug pindah gigi* / *selip rpm naik*.");
+      return res.type("text/xml").send(tw.toString());
+    }
+
+    const userId = fromUser || "unknown";
+    await rememberUser(userId);
+
+    // memory store inbound
+    await addMessage(userId, "user", incomingMsg);
+
+    const { reply, meta, handoff } = generateReplyWithMeta(incomingMsg, userId);
+
+    // memory store assistant
+    await addMessage(userId, "assistant", reply);
+
+    // update meta stage
+    const oldMeta = await getMeta(userId);
+    const newMeta = {
+      ...oldMeta,
+      stage: handoff ? "HANDOFF" : (oldMeta.stage || "ACTIVE"),
+      lastSeenAt: Date.now(),
+      lastLeadTier: meta.leadTier,
+      lastUrgency: meta.urgency,
+      lastVehicleTier: meta.vehicleTier,
+    };
+    await saveMeta(userId, newMeta);
+
+    // schedule followups ONLY for serious leads / handoff / towing / booking
+    const shouldFollow = handoff || meta.leadTier !== "C" || meta.urgency >= 6;
+    if (shouldFollow) {
+      const now = Date.now();
+      await scheduleFollowUp(userId, now + 30 * 60 * 1000, "FU_30M");
+      await scheduleFollowUp(userId, now + 24 * 60 * 60 * 1000, "FU_24H");
+    }
+
+    // HYBRID HANDOFF: notify admin
+    if (handoff && ADMIN_WA && twilioClient && FROM_WA) {
+      const adminMsg = summarizeForAdmin(incomingMsg, meta);
+      // fire-and-forget (but awaited to reduce lost message)
+      await twilioClient.messages.create({
+        from: FROM_WA,
+        to: ADMIN_WA,
+        body: adminMsg.slice(0, 1500),
+      });
+    }
+
+    tw.message(reply);
+    return res.type("text/xml").send(tw.toString());
+  } catch (err) {
+    console.error("Webhook error:", err);
+    tw.message("Maaf sistem sedang sibuk. Ketik ulang atau ketik *JADWAL* / *TOWING*.");
+    return res.type("text/xml").send(tw.toString());
   }
-  lines.push("⏱ Jam buka: Senin–Sabtu 09.00–17.00");
-  lines.push("Ketik: *JADWAL* untuk booking cepat / *TOWING* bila unit tidak bisa jalan.");
-  return lines.join("\n");
-}
+});
 
-function towingMode() {
-  return [
-    "🚚 *Mode TOWING aktif.*",
-    "Kalau mobil *tidak bisa jalan* / takut makin parah, *jangan dipaksakan*.",
-    "Ketik *TOWING* + kirim *share lokasi* Anda, nanti tim kami arahkan evakuasi ke workshop.",
-  ].join("\n");
-}
+// FULL AUTO FOLLOW-UP CRON (call every 5 minutes)
+app.get("/cron/followup", async (req, res) => {
+  try {
+    if (process.env.CRON_KEY && req.query.key !== process.env.CRON_KEY) {
+      return res.status(401).send("unauthorized");
+    }
 
-// Emotional Reading (serius vs iseng)
-function emotionalReading(userText) {
-  const t = norm(userText);
+    if (!twilioClient || !FROM_WA) return res.status(500).send("Twilio env missing");
 
-  const signalsSerius = [
-    "hari ini", "sekarang", "darurat", "mogok", "tidak bisa jalan", "panas", "overheat",
-    "tolong", "urgent", "di jalan", "di tol", "minta towing", "kapan bisa", "booking",
-    "alamat", "lokasi", "share lokasi", "rute", "datang"
-  ];
+    const users = await listUsers();
+    const now = Date.now();
 
-  const signalsIseng = [
-    "berapa aja", "murahnya berapa", "diskon", "nego", "termurah", "paling murah",
-    "cuma tanya", "sekedar nanya", "nggak jadi", "iseng", "test"
-  ];
+    let sent = 0;
 
-  const scoreSerius = signalsSerius.filter(k => t.includes(k)).length;
-  const scoreIseng = signalsIseng.filter(k => t.includes(k)).length;
+    for (const userId of users) {
+      if (!userId || !userId.startsWith("whatsapp:")) continue;
 
-  let label = "NETRAL";
-  if (scoreSerius >= 2 && scoreSerius > scoreIseng) label = "SERIOUS";
-  if (scoreIseng >= 2 && scoreIseng >= scoreSerius) label = "PRICE_HUNTER";
+      const q = await getFollowQueue(userId);
+      if (!q?.length) continue;
 
-  return { label, scoreSerius, scoreIseng };
-}
+      const meta = await getMeta(userId);
+      const stage = meta?.stage || "ACTIVE";
 
-// Vehicle tier detection
-function detectTier(userText) {
-  const t = norm(userText);
+      let changed = false;
 
-  const premiumModels = [
-    "land cruiser", "landcruiser", "lc200", "lc300", "alphard", "vellfire", "lexus",
-    "bmw", "mercedes", "benz", "audi", "porsche", "range rover", "land rover",
-    "fortuner vrz", "pajero sport dakar", "hilux gr", "prado"
-  ];
+      for (const item of q) {
+        if (item.sent) continue;
+        if (now < item.dueAt) continue;
 
-  const midPremium = [
-    "x-trail t32", "xtrail t32", "x trail t32",
-    "crv turbo", "cx-5", "cx5", "harrier", "forester", "outlander"
-  ];
+        // stop followup for price hunters
+        if (stage === "PRICE_HUNTER") {
+          item.sent = true;
+          changed = true;
+          continue;
+        }
 
-  if (containsAny(t, premiumModels)) return "PREMIUM";
-  if (containsAny(t, midPremium)) return "MID_PREMIUM";
-  return "REGULAR";
-}
+        let body = "";
+        if (item.kind === "FU_30M") {
+          body =
+`Halo, kami follow up ya.
+Apakah unitnya jadi datang hari ini?
 
-// Symptom detection
-function detectSymptoms(userText) {
-  const t = norm(userText);
+Ketik *JADWAL* untuk booking cepat atau *TOWING* bila mobil tidak bisa jalan.
+📍 Maps: ${process.env.MAPS_LINK || "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9"}`;
+        } else if (item.kind === "FU_24H") {
+          body =
+`Halo, kami follow up kembali.
+Masih ada keluhan transmisi matic yang belum selesai?
 
-  const hotNoGo = containsAny(t, ["panas gak bisa jalan", "panas tidak bisa jalan", "kalau panas gak jalan", "setelah panas tidak jalan", "overheat"]);
-  const noMove = containsAny(t, ["tidak bisa jalan", "gak bisa jalan", "mogok", "tidak bergerak", "masuk d", "masuk r", "d tapi tidak jalan"]);
-  const slip = containsAny(t, ["selip", "ngelos", "rpm naik", "tarikan hilang"]);
-  const jerk = containsAny(t, ["jedug", "hentak", "sentak"]);
-  const lamp = containsAny(t, ["lampu", "check", "indikator", "at oil", "engine", "warning"]);
-  const noise = containsAny(t, ["dengung", "berisik", "suara aneh", "ngorok"]);
+Jika kasus panas/selip/no move, jangan dipaksakan.
+Ketik *JADWAL* / *TOWING*.
+📍 Maps: ${process.env.MAPS_LINK || "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9"}`;
+        } else {
+          item.sent = true;
+          changed = true;
+          continue;
+        }
 
-  return { hotNoGo, noMove, slip, jerk, lamp, noise };
-}
+        await twilioClient.messages.create({
+          from: FROM_WA,
+          to: userId,
+          body,
+        });
 
-function buildPremiumHotNoGoReply(userText) {
-  // LAND CRUISER 2019 – HIGH AUTHORITY + DIRECT TO WORKSHOP + TOWING OPTION
-  const opening = [
-    "✅ *Land Cruiser (2019) = unit premium & heavy-duty.*",
-    "Kalau *saat panas mobil tidak bisa jalan*, itu *bukan kasus ringan* dan *tidak aman* ditangani lewat chat.",
-  ].join("\n");
+        item.sent = true;
+        changed = true;
+        sent += 1;
+      }
 
-  const diagnosisFrame = [
-    "⚠️ Pola seperti ini sering terkait *proteksi suhu / pressure drop / kontrol modul (TCM/ECU)*.",
-    "Dan pada mobil premium, masalah transmisi *sering punya kausalitas* dengan:",
-    "• kelistrikan/alternator/battery drop",
-    "• ECU/TCM/solenoid/sensor suhu",
-    "• sistem pendinginan oli transmisi",
-    "• engine load & data temperatur",
-  ].join("\n");
+      if (changed) await saveFollowQueue(userId, q);
+    }
 
-  const hardRule = [
-    "🛑 *Aturan kami:* Jangan dipaksakan jalan saat kondisi panas seperti ini.",
-    "Karena kalau dipaksa, kerusakan bisa menjalar (clutch pack/torque converter/valve body) dan biaya bisa melebar.",
-  ].join("\n");
-
-  const antiNego = [
-    "🛡 *Mode Anti-Negosiasi Harga:* Kami tidak mengunci angka via chat untuk unit premium.",
-    moneyPolicyPremium(),
-  ].join("\n");
-
-  const fastTriage = [
-    "Jawab cepat 2 hal ini (cukup angka):",
-    "1) Saat panas, posisi *D/R* masih masuk tapi *tidak bergerak*? (YA/TIDAK)",
-    "2) Ada *lampu warning* menyala? (YA/TIDAK)",
-  ].join("\n");
-
-  const close = [
-    "🎯 *Langkah paling benar:* unit masuk workshop untuk diagnosa premium (scan + test pressure + cek suhu oli).",
-    towingMode(),
-    workshopCTA({ includeMaps: true }),
-  ].join("\n\n");
-
-  return [opening, diagnosisFrame, hardRule, antiNego, fastTriage, close].join("\n\n");
-}
-
-function buildPriceHunterReply() {
-  // Tegas, singkat, tetap mengarahkan
-  return [
-    "Untuk transmisi matic *kami tidak kunci harga dari chat* karena harus diagnosa dulu.",
-    "Kalau ingin estimasi akurat, *datang atau towing* ke workshop untuk pengecekan.",
-    workshopCTA({ includeMaps: true }),
-  ].join("\n\n");
-}
-
-function buildRegularReply(userText) {
-  // Default: tetap ringkas, arahkan ke detail penting + closing
-  return [
-    "Baik, kami bantu cek ya. Agar cepat tepat, mohon jawab singkat:",
-    "1) Mobil apa + tahun berapa?",
-    "2) Gejala utama: jedug/selip/ndut/overheat/tidak bisa jalan?",
-    "3) Pernah servis transmisi sebelumnya? kapan?",
-    "",
-    "Setelah itu kami arahkan langkah terbaik (diagnosa / jadwal / towing).",
-    workshopCTA({ includeMaps: true }),
-  ].join("\n");
-}
-
-// Upsell Overhaul mode (dipakai saat gejala parah / premium)
-function addUpsellOverhaul(baseText) {
-  const upsell = [
-    "💰 *Mode Upselling Overhaul:* Jika setelah diagnosa terbukti kerusakan internal (clutch/valve body/torque converter),",
-    "kami rekomendasikan *overhaul standar Hongz* agar hasil awet, bukan tambal-jalan.",
-    "Unit premium = kami prioritaskan *quality & warranty mindset* (bukan sekadar murah).",
-  ].join("\n");
-  return `${baseText}\n\n${upsell}`;
-}
-
-// Auto closing by urgency
-function autoClosingByUrgency({ tier, symptoms, emotion }) {
-  if (symptoms.noMove || symptoms.hotNoGo) {
-    return "📌 *Urgent:* Kalau unit tidak bisa jalan / panas lalu mati jalan, pilihan terbaik adalah *towing ke workshop hari ini* agar tidak melebar.";
+    return res.send(`OK sent=${sent} users=${users.length}`);
+  } catch (e) {
+    console.error("cron/followup error:", e);
+    return res.status(500).send("error");
   }
-  if (tier !== "REGULAR" && emotion.label === "SERIOUS") {
-    return "📌 Untuk unit premium, kami bisa *prioritaskan slot pemeriksaan* supaya cepat ketemu akar masalah.";
-  }
-  return "📌 Jika Anda siap, ketik *JADWAL* untuk booking, atau *TOWING* bila unit tidak bisa jalan.";
-}
+});
 
-function generateReply(userText) {
-  const t = norm(userText);
-  const tier = detectTier(t);
-  const emotion = emotionalReading(t);
-  const symptoms = detectSymptoms(t);
-
-  // Commands
-  if (t === "jadwal") {
-    return [
-      "✅ *Booking cepat:*",
-      "Kirim format: *NAMA / MOBIL / TAHUN / GEJALA / JAM DATANG*",
-      workshopCTA({ includeMaps: true }),
-    ].join("\n");
-  }
-
-  if (t.includes("towing") || t.includes("derek")) {
-    return [
-      towingMode(),
-      "Kirim *share lokasi* Anda + tulis: *ALAMAT TUJUAN: Hongz Bengkel*",
-      "Kami arahkan prosesnya.",
-      workshopCTA({ includeMaps: true }),
-    ].join("\n\n");
-  }
-
-  if (t.includes("share lokasi")) {
-    return [
-      "Siap. Ini link lokasi workshop Hongz:",
-      "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9",
-      "Jika Anda ingin kami arahkan towing, ketik *TOWING* lalu kirim share lokasi Anda.",
-    ].join("\n");
-  }
-
-  // Price hunters
-  if (emotion.label === "PRICE_HUNTER") {
-    return buildPriceHunterReply();
-  }
-
-  // Premium hot-no-go special (Land Cruiser type)
-  if ((tier === "PREMIUM" || tier === "MID_PREMIUM") && symptoms.hotNoGo) {
-    const base = buildPremiumHotNoGoReply(userText);
-    const withUpsell = addUpsellOverhaul(base);
-    const closing = autoClosingByUrgency({ tier, symptoms, emotion });
-    return `${withUpsell}\n\n${closing}`;
-  }
-
-  // Premium no-move (even if not hot keyword)
-  if ((tier === "PREMIUM" || tier === "MID_PREMIUM") && symptoms.noMove) {
-    const base = [
-      "✅ Unit Anda kategori *premium*.",
-      "Jika *tidak bisa jalan*, kami aktifkan *Mode TOWING* + diagnosa premium.",
-      towingMode(),
-      moneyPolicyPremium(),
-      workshopCTA({ includeMaps: true }),
-      autoClosingByUrgency({ tier, symptoms, emotion }),
-    ].join("\n\n");
-    return addUpsellOverhaul(base);
-  }
-
-  // Default
-  return `${buildRegularReply(userText)}\n\n${autoClosingByUrgency({ tier, symptoms, emotion })}`;
-}
-
-module.exports = { generateReply };
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
