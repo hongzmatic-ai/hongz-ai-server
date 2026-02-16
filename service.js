@@ -1,6 +1,8 @@
 // service.js
-// Hongz AI Engine v4.2 - SHORT REPLY MODE (WhatsApp Focus)
-// Goal: singkat, tegas, high-authority, cepat closing ke workshop/towing
+// Hongz AI Engine v4.1 HYBRID (Rule-based + AI)
+// Goal: Natural response (not kaku), High Authority, Anti-Nego, Push to Workshop/Towing
+
+const OpenAI = require("openai");
 
 function norm(s = "") {
   return String(s).toLowerCase().replace(/\s+/g, " ").trim();
@@ -9,237 +11,168 @@ function containsAny(text, arr) {
   return arr.some((k) => text.includes(k));
 }
 
-// ====== POLICY / CTA ======
-const MAPS_LINK = "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9";
-
 function workshopCTA() {
   return [
-    "📍 Hongz Bengkel (Jl. M. Yakub No.10b, Medan Perjuangan)",
-    `🧭 Maps: ${MAPS_LINK}`,
+    "📍 Hongz Bengkel Spesialis Transmisi Matic",
+    "Jl. M. Yakub No.10b, Medan Perjuangan",
+    "🧭 Maps: https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9",
     "⏱ Senin–Sabtu 09.00–17.00",
-    "Ketik *JADWAL* / *TOWING*",
+    "Ketik: *JADWAL* untuk booking / *TOWING* bila unit tidak bisa jalan."
   ].join("\n");
 }
 
-function towingShort() {
+function towingText() {
   return [
-    "🚚 *TOWING Mode:* jangan dipaksa jalan.",
-    "Ketik *TOWING* + kirim *share lokasi* Anda.",
+    "🚚 *Mode TOWING aktif.*",
+    "Kalau mobil tidak bisa jalan / panas lalu mati jalan: *jangan dipaksakan*.",
+    "Ketik *TOWING* + kirim *share lokasi* Anda, tim kami arahkan evakuasi."
   ].join("\n");
 }
 
-function antiPriceShort(tier = "REGULAR") {
-  if (tier === "PREMIUM" || tier === "MID_PREMIUM") {
-    return "🛡 Unit premium: *tidak ada harga fix via chat*. Wajib diagnosa (scan + pressure + suhu oli).";
-  }
-  return "🛡 *Harga tidak dikunci via chat* tanpa diagnosa. Kita cek dulu biar akurat.";
+function moneyPolicyPremium() {
+  return [
+    "🛡 *Anti-Negosiasi:* Untuk transmisi matic, apalagi unit premium/kerusakan berat, kami *tidak mengunci angka via chat*.",
+    "Estimasi akurat wajib lewat *scan data + cek tekanan + cek suhu oli + evaluasi kelistrikan/TCM/ECU*.",
+    "Kalau ada yang pancing angka, kami tahan dulu—supaya hasilnya fair & tidak salah arah."
+  ].join("\n");
 }
 
-// ====== EMOTIONAL READING (ringkas) ======
-function emotionalReading(userText) {
-  const t = norm(userText);
-  const serius = [
-    "hari ini","sekarang","darurat","mogok","tidak bisa jalan","gak bisa jalan",
-    "panas","overheat","di jalan","di tol","urgent","tolong","booking","jadwal",
-    "alamat","lokasi","share lokasi","rute","datang","towing","derek"
-  ];
-  const iseng = ["murah","nego","diskon","termurah","paling murah","cuma tanya","iseng","test"];
-
-  const s = serius.filter(k => t.includes(k)).length;
-  const p = iseng.filter(k => t.includes(k)).length;
-
-  if (p >= 2 && p >= s) return "PRICE_HUNTER";
-  if (s >= 2 && s > p) return "SERIOUS";
-  return "NETRAL";
-}
-
-// ====== TIER DETECTION ======
-function detectTier(userText) {
-  const t = norm(userText);
+function detectTier(t) {
   const premium = [
     "land cruiser","landcruiser","lc200","lc300","alphard","vellfire","lexus",
     "bmw","mercedes","benz","audi","porsche","range rover","land rover","prado"
   ];
-  const mid = [
-    "x-trail t32","xtrail t32","x trail t32",
-    "crv turbo","cx-5","cx5","harrier","forester","outlander"
-  ];
+  const mid = ["x-trail t32","xtrail t32","crv turbo","cx-5","cx5","harrier","forester","outlander"];
   if (containsAny(t, premium)) return "PREMIUM";
   if (containsAny(t, mid)) return "MID_PREMIUM";
   return "REGULAR";
 }
 
-// ====== VEHICLE + YEAR EXTRACTION ======
-function extractVehicleYear(userText) {
-  const t = norm(userText);
-  const yearMatch = t.match(/\b(19[9]\d|20[0-2]\d|203[0-5])\b/);
-  const year = yearMatch ? yearMatch[0] : null;
-
-  const vehicles = [
-    "innova","avanza","xenia","rush","terios","fortuner","pajero","land cruiser","alphard",
-    "civic","crv","brv","hrv","camry","yaris","brio","x-trail","xtrail","jazz","freed",
-    "ertiga","xl7","apv","grand vitara","outlander","harrier","hilux","prado"
-  ];
-  const vehicle = vehicles.find(v => t.includes(v)) || null;
-  return { vehicle, year };
+function detectSymptoms(t) {
+  const hotNoGo = containsAny(t, ["panas gak bisa jalan","kalau panas gak jalan","overheat","panas tidak bisa jalan"]);
+  const noMove = containsAny(t, ["tidak bisa jalan","gak bisa jalan","mogok","d tapi tidak jalan","r tapi tidak jalan"]);
+  const jerk = containsAny(t, ["jedug","hentak","sentak"]);
+  const slip = containsAny(t, ["selip","ngelos","rpm naik","tarikan hilang","rpm tinggi baru masuk"]);
+  const shiftDelay = containsAny(t, ["telat pindah gigi","rpm tinggi baru masuk","gigi 2 rpm tinggi"]);
+  return { hotNoGo, noMove, jerk, slip, shiftDelay };
 }
 
-// ====== SYMPTOMS ======
-function detectSymptoms(userText) {
-  const t = norm(userText);
-
-  const hotNoGo = containsAny(t, [
-    "panas gak bisa jalan","panas tidak bisa jalan","kalau panas gak jalan",
-    "setelah panas tidak jalan","overheat","habis panas"
-  ]);
-
-  const noMove = containsAny(t, [
-    "tidak bisa jalan","gak bisa jalan","mogok","tidak bergerak",
-    "masuk d tapi tidak jalan","masuk r tapi tidak jalan","d tapi tidak jalan","r tapi tidak jalan"
-  ]);
-
-  const shiftFlare = containsAny(t, [
-    "rpm tinggi baru masuk","rpm tinggi dulu baru masuk","gaung rpm tinggi baru masuk",
-    "gear 2 rpm tinggi baru masuk","gigi 2 rpm tinggi baru masuk","pindah gigi 2 rpm tinggi",
-    "flare","slip saat pindah gigi"
-  ]);
-
-  const slip = containsAny(t, ["selip","ngelos","rpm naik","tarikan hilang"]);
-  const jerk = containsAny(t, ["jedug","hentak","sentak","ngentak"]);
-  const lamp = containsAny(t, ["lampu","check","indikator","at oil","engine","warning"]);
-  const noise = containsAny(t, ["dengung","berisik","suara aneh","ngorok","gaung"]);
-
-  return { hotNoGo, noMove, shiftFlare, slip, jerk, lamp, noise };
+function isPriceHunter(t) {
+  const bait = ["murah","termurah","nego","diskon","berapa aja","angka dulu","budget"];
+  return containsAny(t, bait);
 }
 
-// ====== SHORT REPLY BUILDERS ======
-function replyPriceHunter(tier) {
-  return [
-    antiPriceShort(tier),
-    "Kalau serius mau akurat: *datang / towing* untuk cek.",
-    workshopCTA(),
-  ].join("\n");
-}
-
-function replyPremiumHotNoGo(tier) {
-  return [
-    "⚠️ *Panas lalu tidak bisa jalan* = *case berat*, jangan dipaksa.",
-    antiPriceShort(tier),
-    towingShort(),
-    "Jawab 2 hal: (1) D/R masuk tapi tidak gerak? (YA/TIDAK) (2) Lampu warning? (YA/TIDAK)",
-    workshopCTA(),
-  ].join("\n");
-}
-
-function replyNoMove(tier) {
-  return [
-    "🚫 *Tidak bisa jalan* = prioritas evakuasi/cek cepat.",
-    antiPriceShort(tier),
-    towingShort(),
-    workshopCTA(),
-  ].join("\n");
-}
-
-function replyShiftFlare({ vehicle, year, tier }) {
-  const head = vehicle && year ? `✅ ${vehicle.toUpperCase()} ${year} terdeteksi.` : "✅ Gejala terdeteksi.";
-  return [
-    head,
-    "Gejala *RPM tinggi baru masuk gigi* = indikasi *shift flare / slip perpindahan* (pressure/valve body/solenoid/clutch).",
-    "🛑 Jangan tunggu sampai ‘hilang jalan’.",
-    "Jawab 2 hal: (1) muncul saat dingin atau panas/macet? (2) pernah ganti oli transmisi kapan?",
-    antiPriceShort(tier),
-    workshopCTA(),
-  ].join("\n");
-}
-
-function replyCoreInfo({ vehicle, year, tier, symptoms }) {
-  const head = vehicle && year ? `✅ ${vehicle.toUpperCase()} ${year} terdeteksi.` : "✅ Oke, saya tangkap.";
-  // pilih 1 kalimat gejala utama
-  let main = "Gejala perlu dikunci lewat diagnosa.";
-  if (symptoms.jerk) main = "Gejala *jedug/hentak* biasanya terkait kontrol tekanan/solenoid/valve body.";
-  if (symptoms.slip) main = "Gejala *selip/rpm naik* biasanya terkait pressure/oli/clutch.";
-  if (symptoms.noise) main = "Gejala *bunyi/dengung* perlu cek bearing/torque converter/pressure line.";
-  if (symptoms.lamp) main = "Ada indikasi *lampu warning* → wajib scan data untuk kunci sumber.";
-
-  return [
-    head,
-    `🔎 ${main}`,
-    antiPriceShort(tier),
-    "Jawab 2 hal: (1) muncul saat dingin atau panas/macet? (2) ada lampu indikator? (YA/TIDAK)",
-    workshopCTA(),
-  ].join("\n");
-}
-
-function replyIntakeShort() {
-  return [
-    "Baik. Jawab singkat 2 hal dulu ya:",
-    "1) Mobil + tahun?",
-    "2) Gejala utama (jedug/selip/panas/no move/rpm tinggi)?",
-    workshopCTA(),
-  ].join("\n");
-}
-
-// ====== ROUTER ======
-function generateReply(userText) {
-  const t = norm(userText);
-  const tier = detectTier(t);
-  const emotion = emotionalReading(t);
-  const symptoms = detectSymptoms(t);
-  const { vehicle, year } = extractVehicleYear(t);
-
-  // Commands
+function commandReply(t) {
   if (t === "jadwal") {
     return [
-      "✅ *BOOKING CEPAT*",
-      "Kirim: *NAMA / MOBIL / TAHUN / GEJALA / JAM DATANG*",
-      workshopCTA(),
-    ].join("\n");
+      "✅ *Booking cepat* (copy format ini):",
+      "*NAMA / MOBIL / TAHUN / GEJALA / JAM DATANG (hari ini/besok)*",
+      workshopCTA()
+    ].join("\n\n");
   }
-
   if (t.includes("towing") || t.includes("derek")) {
     return [
-      "🚚 *TOWING ACTIVE*",
-      "Kirim *share lokasi* Anda + tulis: *TUJUAN: Hongz Bengkel*",
-      workshopCTA(),
-    ].join("\n");
+      towingText(),
+      "Kirim *share lokasi* Anda + tulis: *NAMA / MOBIL / PLAT*",
+      workshopCTA()
+    ].join("\n\n");
   }
-
   if (t.includes("share lokasi")) {
     return [
-      `🧭 Lokasi Hongz: ${MAPS_LINK}`,
-      "Kalau unit tidak bisa jalan, ketik *TOWING* lalu kirim share lokasi Anda.",
+      "Siap. Ini link lokasi workshop Hongz:",
+      "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9",
+      "Jika butuh evakuasi: ketik *TOWING* lalu kirim share lokasi Anda."
     ].join("\n");
   }
+  return null;
+}
 
-  // Price hunters
-  if (emotion === "PRICE_HUNTER") {
-    return replyPriceHunter(tier);
+// ---------- AI PART (makes it "hidup") ----------
+function buildSystemPrompt({ tier }) {
+  return `
+Anda adalah CS WhatsApp "Hongz Bengkel Spesialis Transmisi Matic" Medan.
+Gaya: singkat, tegas, high authority, profesional, tidak bertele-tele.
+Tujuan bisnis: arahkan pelanggan datang ke bengkel / towing bila perlu.
+Aturan wajib:
+- Jangan kasih harga fix via chat. Boleh "estimasi hanya setelah diagnosa" + jelaskan kenapa (transmisi terkait kelistrikan/ECU/TCM/dll).
+- Tanyakan MAX 2 pertanyaan kunci (biar tidak seperti kuesioner panjang).
+- Jika gejala berat / tidak bisa jalan / panas lalu mati jalan → sarankan towing, jangan dipaksa.
+- Akhiri dengan CTA: JADWAL / TOWING + alamat + maps.
+Tier kendaraan saat ini: ${tier}.
+Output: 1 pesan WhatsApp (maks 900 karakter), bahasa Indonesia.
+`.trim();
+}
+
+async function aiReply(userText, { tier, symptoms }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    // Fallback kalau API key belum dipasang
+    return [
+      "Baik, kami pahami. Agar tidak salah arah, kami butuh diagnosa singkat di workshop.",
+      "Jawab 2 hal ini: 1) muncul jedug/selip/atau rpm tinggi? 2) terjadi saat panas atau dingin?",
+      workshopCTA()
+    ].join("\n\n");
   }
 
-  // Urgent cases
-  if ((tier === "PREMIUM" || tier === "MID_PREMIUM") && symptoms.hotNoGo) {
-    return replyPremiumHotNoGo(tier);
+  const client = new OpenAI({ apiKey });
+
+  const hint = [];
+  if (symptoms.hotNoGo || symptoms.noMove) hint.push("URGENCY: tinggi, arahkan towing.");
+  if (symptoms.shiftDelay || symptoms.slip) hint.push("Possible: slip/pressure/solenoid/valve body, but don't diagnose definitively.");
+  if (tier !== "REGULAR") hint.push("Premium handling: stronger authority, mention diagnostic gate + risk cost can expand.");
+
+  const userPrompt = `
+Pesan pelanggan: "${userText}"
+Catatan internal: ${hint.join(" ")}
+`.trim();
+
+  const resp = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.4,
+    messages: [
+      { role: "system", content: buildSystemPrompt({ tier }) },
+      { role: "user", content: userPrompt }
+    ]
+  });
+
+  return resp.choices?.[0]?.message?.content?.trim() || "Baik, kami bantu cek. " + workshopCTA();
+}
+
+// ---------- MAIN ROUTER ----------
+async function generateReply(userText) {
+  const t = norm(userText);
+
+  // Commands
+  const cmd = commandReply(t);
+  if (cmd) return cmd;
+
+  const tier = detectTier(t);
+  const symptoms = detectSymptoms(t);
+
+  // Price bait
+  if (isPriceHunter(t)) {
+    return [moneyPolicyPremium(), workshopCTA()].join("\n\n");
   }
 
-  if (symptoms.noMove) {
-    return replyNoMove(tier);
+  // Hard rule: urgent towing
+  if (symptoms.hotNoGo || symptoms.noMove) {
+    return [
+      "⚠️ Ini gejala berat. *Jangan dipaksakan jalan* karena bisa melebar dan merusak internal transmisi/komponen lain.",
+      towingText(),
+      moneyPolicyPremium(),
+      "Jawab cepat 2 hal: 1) Saat panas D/R masuk tapi tidak gerak? 2) Ada lampu warning?",
+      workshopCTA()
+    ].join("\n\n");
   }
 
-  if (symptoms.shiftFlare) {
-    return replyShiftFlare({ vehicle, year, tier });
+  // Otherwise: AI makes it alive (handles Innova-like questions naturally)
+  const answer = await aiReply(userText, { tier, symptoms });
+
+  // Safety: ensure CTA always present
+  if (!answer.includes("Maps:") && !answer.includes("maps.app.goo.gl")) {
+    return `${answer}\n\n${workshopCTA()}`;
   }
-
-  // If user already gave vehicle+year AND at least one symptom -> short direct
-  const hasCoreInfo =
-    Boolean(vehicle && year) &&
-    (symptoms.slip || symptoms.jerk || symptoms.lamp || symptoms.noise || symptoms.hotNoGo || symptoms.noMove);
-
-  if (hasCoreInfo) {
-    return replyCoreInfo({ vehicle, year, tier, symptoms });
-  }
-
-  // Default intake
-  return replyIntakeShort();
+  return answer;
 }
 
 module.exports = { generateReply };
