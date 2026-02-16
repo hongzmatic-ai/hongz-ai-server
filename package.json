@@ -1,11 +1,8 @@
 {
   "name": "hongz-ai-server",
-  "version": "2.0.0",
-  "description": "AI WhatsApp server for Hongz Bengkel",
+  "version": "5.2.0",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
+  "scripts": { "start": "node server.js" },
   "dependencies": {
     "body-parser": "^1.20.2",
     "dotenv": "^16.3.1",
