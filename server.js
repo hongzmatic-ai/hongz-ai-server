@@ -1,20 +1,25 @@
+// server.js
+// =====================================================
+// HONGZ AI SERVER - FULL REPLACE (Memory + Follow-up v6)
+// - Twilio inbound webhook: /whatsapp/incoming
+// - Cron follow-up: /cron/followup?key=CRON_KEY
+// - Persistent JSON DB on Render Disk (/var/data)
+// =====================================================
+
 const express = require("express");
 const bodyParser = require("body-parser");
 const twilio = require("twilio");
 const fs = require("fs");
 const path = require("path");
-
 require("dotenv").config();
 
 const { generateReply } = require("./service");
-console.log("✅ Hongz AI Engine loaded: v5.6 + Follow-up Pack");
+console.log("✅ Hongz AI Engine loaded: service.js");
 
 // =====================
 // APP
 // =====================
 const app = express();
-
-// Twilio sends x-www-form-urlencoded
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
@@ -26,9 +31,7 @@ const DB_PATH = path.join(DATA_DIR, "hongz_followup_db.json");
 
 function ensureDB() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DB_PATH)) {
-    fs.writeFileSync(DB_PATH, JSON.stringify({ customers: {} }, null, 2));
-  }
+  if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, JSON.stringify({ customers: {} }, null, 2));
 }
 
 function loadDB() {
@@ -44,21 +47,138 @@ function saveDB(db) {
   try {
     ensureDB();
     fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
-  } catch {}
+  } catch (e) {
+    console.log("DB save error:", e?.message || e);
+  }
 }
 
+// =====================
+// WA helper for auto-fill (follow-up v6)
+// =====================
+function cleanMsisdn(msisdn) {
+  return String(msisdn || "").replace(/[^\d]/g, "");
+}
+
+function waLink(msisdn, text = "") {
+  const n = cleanMsisdn(msisdn);
+  if (!n) return "";
+  if (!text) return `https://wa.me/${n}`;
+  return `https://wa.me/${n}?text=${encodeURIComponent(text)}`;
+}
+
+function templateAdminFollowup(cust) {
+  const p = cust.profile || {};
+  const meta = cust.meta || {};
+  const unit = (p.model && p.year) ? `${p.model} ${p.year}` : (p.model || "");
+  const tagStr = Array.isArray(p.symptoms) && p.symptoms.length ? p.symptoms.join(", ") : "-";
+  const last = String(cust.lastMsg || "").replace(/\s+/g, " ").trim().slice(0, 240);
+
+  return [
+    "Halo Admin Hongz, saya follow-up pesan sebelumnya.",
+    unit ? `Unit: ${String(unit).toUpperCase()}` : "Unit: -",
+    `Keluhan terakhir: ${last || "-"}`,
+    `Tag sistem: ${tagStr}`,
+    meta.urgency ? "Kondisi: URGENT (berisiko jika dipaksakan)" : "Kondisi: -",
+    "",
+    "Saya siap kirim detail:",
+    "- Nama:",
+    "- Lokasi sekarang (share lokasi):",
+    "- Unit bisa jalan atau perlu towing:",
+  ].join("\n");
+}
+
+// =====================
+// PROFILE EXTRACTOR (Memory v2+)
+// =====================
+function extractProfileFromText(msg = "") {
+  const t = String(msg || "").toLowerCase();
+
+  // model keywords (lightweight, extend as needed)
+  // NOTE: keep it simple to avoid false positives
+  let model = "";
+  const models = [
+    "innova", "avanza", "xenia", "rush", "fortuner", "pajero", "alphard", "vellfire",
+    "land cruiser", "landcruiser", "prado", "camry", "corolla", "yaris",
+    "x-trail", "xtrail", "crv", "hrv", "brv", "civic",
+    "mazda", "cx-5", "cx5",
+    "bmw", "mercedes", "benz", "audi", "lexus", "porsche"
+  ];
+
+  for (const m of models) {
+    if (t.includes(m)) { model = m.toUpperCase(); break; }
+  }
+
+  // year 4-digit
+  const yearMatch = t.match(/\b(19|20)\d{2}\b/);
+  const year4 = yearMatch ? yearMatch[0] : "";
+
+  // year 2-digit (08, 09, 19)
+  let year2 = "";
+  const yy = t.match(/\b\d{2}\b/);
+  if (!year4 && yy) {
+    const n = Number(yy[0]);
+    if (n >= 0 && n <= 25) year2 = `20${String(n).padStart(2, "0")}`;
+    else if (n >= 80 && n <= 99) year2 = `19${yy[0]}`;
+  }
+  const year = year4 || year2;
+
+  // symptom tags
+  const symptoms = [];
+  const add = (tag) => { if (!symptoms.includes(tag)) symptoms.push(tag); };
+
+  if (/rpm tinggi|rpm naik/.test(t)) add("RPM_TINGGI");
+  if (/telat masuk|baru masuk|delay/.test(t)) add("DELAY_GEAR");
+  if (/jedug|hentak|sentak/.test(t)) add("JEDUG");
+  if (/selip|ngelos|tarikan hilang/.test(t)) add("SELIP");
+  if (/tidak bisa jalan|gak bisa jalan|mogok|tidak bergerak/.test(t)) add("NO_MOVE");
+  if (/panas.*(gak bisa jalan|tidak bisa jalan)|overheat/.test(t)) add("HOT_NO_GO");
+  if (/dengung|gaung|berisik|suara aneh|ngorok/.test(t)) add("NOISE");
+  if (/lampu|indikator|warning|at oil|check engine/.test(t)) add("WARNING_LAMP");
+
+  // canDrive hint
+  let canDrive = null;
+  if (/bisa jalan|masih bisa jalan/.test(t)) canDrive = true;
+  if (/tidak bisa jalan|gak bisa jalan|mogok/.test(t)) canDrive = false;
+
+  return { model, year, symptoms, canDrive };
+}
+
+function mergeProfiles(oldP = {}, newP = {}) {
+  const mergedModel = newP.model || oldP.model || "";
+  const mergedYear = newP.year || oldP.year || "";
+  const mergedSymptoms = Array.from(new Set([...(oldP.symptoms || []), ...(newP.symptoms || [])]));
+  const mergedCanDrive =
+    (typeof newP.canDrive === "boolean") ? newP.canDrive :
+    (typeof oldP.canDrive === "boolean") ? oldP.canDrive : null;
+
+  return { model: mergedModel, year: mergedYear, symptoms: mergedSymptoms, canDrive: mergedCanDrive };
+}
+
+// =====================
+// CUSTOMER UPSERT
+// =====================
 function upsertCustomer({ from, lastMsg, meta }) {
   const db = loadDB();
   const now = Date.now();
-  const c = db.customers[from] || { followupCount: 0, optOut: false };
+
+  const c = db.customers[from] || {
+    followupCount: 0,
+    optOut: false,
+    profile: { model: "", year: "", symptoms: [], canDrive: null },
+    meta: {},
+  };
+
+  const extracted = extractProfileFromText(lastMsg);
+  const mergedProfile = mergeProfiles(c.profile || {}, extracted);
 
   db.customers[from] = {
     ...c,
     from,
     lastMsg,
     meta: meta || c.meta || {},
+    profile: mergedProfile,
     lastInboundAt: now,
-    waitingSince: now, // reset waiting marker when customer speaks again
+    waitingSince: now,
   };
 
   saveDB(db);
@@ -66,7 +186,7 @@ function upsertCustomer({ from, lastMsg, meta }) {
 
 function markOptOut(from, optOut = true) {
   const db = loadDB();
-  if (!db.customers[from]) db.customers[from] = { from, followupCount: 0 };
+  if (!db.customers[from]) db.customers[from] = { from, followupCount: 0, profile: {}, meta: {} };
   db.customers[from].optOut = optOut;
   saveDB(db);
 }
@@ -74,7 +194,7 @@ function markOptOut(from, optOut = true) {
 function markFollowupSent(from) {
   const db = loadDB();
   const now = Date.now();
-  const c = db.customers[from] || { followupCount: 0 };
+  const c = db.customers[from] || { followupCount: 0, profile: {}, meta: {} };
 
   db.customers[from] = {
     ...c,
@@ -110,70 +230,109 @@ function isDueForFollowup(cust) {
 }
 
 // =====================
-// FOLLOW-UP 50% AUTHORITY TEXT
+// FOLLOW-UP v6 (Escalation + Symptom + Admin auto-fill)
 // =====================
 function followupText(cust) {
   const meta = cust.meta || {};
+  const profile = cust.profile || {};
+
   const tier = meta.tier || "STANDARD";
   const urgency = !!meta.urgency;
   const priceFocus = !!meta.priceFocus;
 
   const MAPS = process.env.MAPS_LINK || "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9";
 
-  if (urgency) {
-    return [
-      "Kami follow-up ya. Jika unit masih *tidak bisa jalan*, sebaiknya tidak dipaksakan.",
-      "Untuk mencegah pelebaran kerusakan, opsi paling aman adalah evakuasi.",
-      "Ketik *TOWING* dan kirim share lokasi Anda — kami arahkan prosesnya hari ini.",
-      "",
-      `📍 Lokasi Hongz: ${MAPS}`,
-      "Ketik *ADMIN* bila ingin respon prioritas.",
-      "Ketik STOP jika tidak ingin follow-up lagi.",
-    ].join("\n");
+  const n = Math.min((cust.followupCount || 0) + 1, 3);
+
+  let unitName = "";
+  if (profile.model && profile.year) unitName = `${profile.model} ${profile.year}`;
+  else if (profile.model) unitName = profile.model;
+
+  const unitLine = unitName ? `untuk unit ${String(unitName).toUpperCase()} Anda` : "untuk unit Anda";
+  const stopLine = "Ketik STOP jika tidak ingin follow-up lagi.";
+  const mapsLine = `📍 Lokasi: ${MAPS}`;
+
+  const WA_ADMIN = cleanMsisdn(process.env.WA_ADMIN || "6281375430728");
+  const adminFilled = waLink(WA_ADMIN, templateAdminFollowup(cust));
+  const adminLine = adminFilled ? `📲 WhatsApp Admin (klik, pesan sudah terisi): ${adminFilled}` : "";
+
+  const tags = Array.isArray(profile.symptoms) ? profile.symptoms : [];
+  const has = (tag) => tags.includes(tag);
+
+  function symptomLine() {
+    if (has("HOT_NO_GO")) return "Catatan: pola *panas lalu hilang gerak* sering terkait kestabilan tekanan kerja saat suhu naik—lebih aman ditangani cepat.";
+    if (has("NO_MOVE")) return "Catatan: kondisi *tidak bisa jalan* sebaiknya tidak dipaksakan karena berisiko memperluas kerusakan internal.";
+    if (has("SELIP")) return "Catatan: *selip / rpm naik tapi tarikan hilang* umumnya mengarah ke ketidakstabilan tekanan kerja atau slip internal—lebih efisien bila dicek lebih awal.";
+    if (has("RPM_TINGGI") || has("DELAY_GEAR")) return "Catatan: *rpm tinggi / telat masuk gigi* sering terkait delay tekanan/valve body/ATF—lebih terkendali bila diagnosa berbasis data dilakukan lebih awal.";
+    if (has("JEDUG")) return "Catatan: *jedug/hentak* biasanya muncul saat kontrol perpindahan tidak presisi—lebih aman dicek agar tidak berkembang.";
+    if (has("NOISE")) return "Catatan: *gaung/dengung* perlu dipastikan sumbernya (drivetrain/torque converter/bearing)—lebih cepat ketemu jika dicek langsung.";
+    if (has("WARNING_LAMP")) return "Catatan: jika ada *indikator/warning lamp*, pemeriksaan scan data sebaiknya diprioritaskan agar arah penanganan tepat.";
+    return "Catatan: gejala yang berulang biasanya lebih mudah dikendalikan bila ditangani sebelum berkembang.";
   }
 
+  const stageIntro = {
+    1: `Kami follow-up ya ${unitLine}.`,
+    2: `Kami follow-up lagi ${unitLine} agar arah penanganan tetap efisien.`,
+    3: `Kami follow-up terakhir ${unitLine} supaya tidak terlambat ditangani.`,
+  };
+
+  const stageCTA = {
+    1: "Jika memungkinkan, ketik *JADWAL* untuk pemeriksaan.",
+    2: "Agar cepat terkendali, ketik *JADWAL* untuk amankan slot pemeriksaan.",
+    3: "Jika Anda siap, ketik *JADWAL* sekarang untuk prioritas pemeriksaan.",
+  };
+
+  const stageTow = {
+    1: "Jika unit tidak memungkinkan berjalan, ketik *TOWING* lalu kirim share lokasi.",
+    2: "Jika unit berat / ragu dipakai jalan, ketik *TOWING* dan kirim share lokasi — kami arahkan evakuasi.",
+    3: "Jika unit tidak bisa jalan, ketik *TOWING* sekarang agar evakuasi bisa diatur lebih cepat.",
+  };
+
+  // urgent path
+  if (urgency || has("NO_MOVE") || has("HOT_NO_GO")) {
+    const byStage = {
+      1: [stageIntro[n], symptomLine(), "Jika masih berisiko / tidak bisa berjalan, sebaiknya jangan dipaksakan.", "", stageTow[n], adminLine, mapsLine, stopLine],
+      2: [stageIntro[n], symptomLine(), "Untuk menjaga kerusakan tidak melebar, langkah paling aman adalah evakuasi dan pemeriksaan berbasis data.", "", stageTow[n], adminLine, mapsLine, stopLine],
+      3: [stageIntro[n], symptomLine(), "Agar tetap efisien dan terkendali, sebaiknya tindakan dilakukan segera (towing/masuk workshop).", "", stageTow[n], adminLine, mapsLine, stopLine],
+    };
+    return byStage[n].filter(Boolean).join("\n");
+  }
+
+  // price path
   if (priceFocus) {
-    return [
-      "Kami follow-up ya.",
-      "Estimasi tanpa pemeriksaan sering tidak akurat dan berisiko salah arah biaya.",
-      "Agar hasil tepat & efisien, unit perlu kami cek langsung.",
-      "",
-      "Slot pemeriksaan terbatas. Ketik *JADWAL* untuk amankan jadwal.",
-      `📍 Lokasi: ${MAPS}`,
-      "Ketik STOP jika tidak ingin follow-up lagi.",
-    ].join("\n");
+    const byStage = {
+      1: [stageIntro[n], symptomLine(), "Estimasi tanpa pemeriksaan sering tidak akurat dan berisiko salah arah biaya.", "Agar tepat & efisien, unit perlu dicek berbasis data.", "", stageCTA[n], adminLine, mapsLine, stopLine],
+      2: [stageIntro[n], symptomLine(), "Pendekatan lebih awal biasanya lebih terkendali dibanding koreksi setelah pola berkembang.", "", stageCTA[n], adminLine, mapsLine, stopLine],
+      3: [stageIntro[n], symptomLine(), "Jika Anda ingin jalur respon prioritas, klik WhatsApp Admin di bawah.", "", stageCTA[n], adminLine, mapsLine, stopLine],
+    };
+    return byStage[n].filter(Boolean).join("\n");
   }
 
+  // premium path
   if (tier === "PREMIUM" || tier === "MID_PREMIUM") {
-    return [
-      "Kami follow-up ya.",
-      "Untuk unit dengan kontrol transmisi modern, penanganan presisi penting agar tidak terjadi trial-error.",
-      "Kami prioritaskan slot unit premium untuk pemeriksaan yang akurat.",
-      "",
-      "Datang hari ini atau perlu bantuan towing?",
-      "Ketik *JADWAL* / *TOWING*.",
-      `📍 Lokasi: ${MAPS}`,
-      "Ketik STOP jika tidak ingin follow-up lagi.",
-    ].join("\n");
+    const byStage = {
+      1: [stageIntro[n], symptomLine(), "Untuk unit dengan kontrol transmisi modern, penanganan presisi penting agar tidak trial-error.", "", stageCTA[n], stageTow[n], adminLine, mapsLine, stopLine],
+      2: [stageIntro[n], symptomLine(), "Kami bisa prioritaskan slot pemeriksaan agar diagnosa cepat dan akurat.", "", stageCTA[n], stageTow[n], adminLine, mapsLine, stopLine],
+      3: [stageIntro[n], symptomLine(), "Jika Anda ingin pemeriksaan diprioritaskan, klik WhatsApp Admin agar diarahkan jalur prioritas.", "", stageCTA[n], stageTow[n], adminLine, mapsLine, stopLine],
+    };
+    return byStage[n].filter(Boolean).join("\n");
   }
 
-  return [
-    "Kami follow-up ya.",
-    "Gejala yang Anda sampaikan sebaiknya tidak dibiarkan karena berpotensi berkembang.",
-    "Agar tidak melebar, unit sebaiknya diperiksa dalam waktu dekat.",
-    "",
-    "Slot hari ini terbatas. Ketik *JADWAL* untuk amankan jadwal,",
-    "atau *TOWING* bila unit tidak memungkinkan berjalan.",
-    `📍 Lokasi: ${MAPS}`,
-    "Ketik STOP jika tidak ingin follow-up lagi.",
-  ].join("\n");
+  // standard path
+  const byStage = {
+    1: [stageIntro[n], symptomLine(), "Agar tetap efisien, unit sebaiknya diperiksa dalam waktu dekat.", "", stageCTA[n], stageTow[n], adminLine, mapsLine, stopLine],
+    2: [stageIntro[n], symptomLine(), "Pemeriksaan berbasis data membantu memastikan tindakan yang tepat sejak awal.", "", stageCTA[n], stageTow[n], adminLine, mapsLine, stopLine],
+    3: [stageIntro[n], symptomLine(), "Jika Anda siap, ketik *JADWAL* sekarang atau klik WhatsApp Admin untuk jalur prioritas.", "", stageCTA[n], stageTow[n], adminLine, mapsLine, stopLine],
+  };
+
+  return byStage[n].filter(Boolean).join("\n");
 }
 
 // =====================
-// META GUESS (lightweight)
+// META GUESS (lightweight) for follow-up targeting
 // =====================
 function guessMetaFromText(msg) {
-  const text = (msg || "").toLowerCase();
+  const text = String(msg || "").toLowerCase();
 
   const premium = /land cruiser|alphard|vellfire|lexus|bmw|mercedes|benz|audi|porsche|range rover|land rover|prado/;
   const mid = /x-trail t32|xtrail t32|crv turbo|cx-5|cx5|harrier|forester|outlander/;
@@ -201,42 +360,39 @@ app.post("/whatsapp/incoming", async (req, res) => {
 
     const twiml = new twilio.twiml.MessagingResponse();
 
-    // empty message
     if (!incomingMsg) {
-      twiml.message("Halo! Ketik keluhan singkat Anda ya. Contoh: 'panas gak bisa jalan' atau 'jedug saat pindah gigi'.");
-      res.type("text/xml").send(twiml.toString());
-      return;
+      twiml.message("Halo! Ketik keluhan singkat Anda ya. Contoh: 'rpm tinggi' atau 'jedug pindah gigi'.");
+      return res.type("text/xml").send(twiml.toString());
     }
 
-    // opt-out controls
     const low = incomingMsg.toLowerCase();
+
+    // opt-out controls
     if (low === "stop" || low === "unsubscribe") {
       markOptOut(from, true);
       twiml.message("Baik. Follow-up dinonaktifkan. Jika ingin aktif lagi, ketik START.");
-      res.type("text/xml").send(twiml.toString());
-      return;
+      return res.type("text/xml").send(twiml.toString());
     }
     if (low === "start" || low === "subscribe") {
       markOptOut(from, false);
       twiml.message("Siap. Follow-up diaktifkan kembali. Silakan ketik keluhan Anda.");
-      res.type("text/xml").send(twiml.toString());
-      return;
+      return res.type("text/xml").send(twiml.toString());
     }
 
-    // Track last inbound to DB
+    // store to DB (for follow-up)
     const meta = guessMetaFromText(incomingMsg);
     if (from) upsertCustomer({ from, lastMsg: incomingMsg, meta });
 
-    // Generate reply from service.js
+    // reply (service.js)
     const reply = await generateReply(incomingMsg);
     twiml.message(reply);
 
-    res.type("text/xml").send(twiml.toString());
+    return res.type("text/xml").send(twiml.toString());
   } catch (err) {
     console.error("Webhook error:", err);
     const twiml = new twilio.twiml.MessagingResponse();
-    twiml.message("Maaf, sistem sedang sibuk. Ketik ulang pesan Anda atau ketik *JADWAL* / *TOWING*.");
-    res.type("text/xml").send(twiml.toString());
+    twiml.message("Maaf, sistem sedang sibuk. Silakan ketik ulang pesan Anda atau ketik *JADWAL* / *TOWING*.");
+    return res.type("text/xml").send(twiml.toString());
   }
 });
 
@@ -248,7 +404,7 @@ app.post("/cron/followup", async (req, res) => {
 
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const fromBot = process.env.TWILIO_WHATSAPP_FROM; // "whatsapp:+62..."
+    const fromBot = process.env.TWILIO_WHATSAPP_FROM; // "whatsapp:+..."
 
     if (!accountSid || !authToken || !fromBot) return res.status(500).send("Missing Twilio env");
 
@@ -267,10 +423,10 @@ app.post("/cron/followup", async (req, res) => {
       sent++;
     }
 
-    res.send(`Follow-up sent: ${sent}`);
+    return res.send(`Follow-up sent: ${sent}`);
   } catch (e) {
     console.error("cron/followup error:", e);
-    res.status(500).send("Error");
+    return res.status(500).send("Error");
   }
 });
 
