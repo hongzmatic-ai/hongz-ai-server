@@ -8,6 +8,8 @@ require("dotenv").config();
 
 const { generateReply } = require("./service");
 
+console.log("✅ Hongz AI Engine loaded: v5.6");
+
 const app = express();
 
 // Twilio sends x-www-form-urlencoded
