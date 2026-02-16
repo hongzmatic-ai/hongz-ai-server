@@ -1,4 +1,6 @@
-// server.js
+// server.js (v5.2)
+// Twilio inbound webhook -> service.generateReply() -> TwiML reply
+
 const express = require("express");
 const bodyParser = require("body-parser");
 const twilio = require("twilio");
@@ -17,26 +19,27 @@ app.get("/", (req, res) => {
 });
 
 app.post("/whatsapp/incoming", async (req, res) => {
-  const twiml = new twilio.twiml.MessagingResponse();
-
   try {
     const incomingMsg = (req.body.Body || "").trim();
+    const twiml = new twilio.twiml.MessagingResponse();
 
     if (!incomingMsg) {
       twiml.message(
-        "Halo! Ketik keluhan singkat ya. Contoh: 'panas gak bisa jalan' / 'jedug pindah gigi' / 'rpm tinggi baru masuk'."
+        "Ketik gejala inti saja. Contoh:\n- panas lalu tidak bisa jalan\n- jedug pindah gigi\n- rpm naik tapi selip"
       );
       return res.type("text/xml").send(twiml.toString());
     }
 
-    const reply = await generateReply(incomingMsg); // ✅ NOW ASYNC
-    twiml.message(reply);
+    // IMPORTANT: await (because AI call is async)
+    const reply = await generateReply(incomingMsg);
 
+    twiml.message(reply);
     return res.type("text/xml").send(twiml.toString());
   } catch (err) {
     console.error("Webhook error:", err);
+    const twiml = new twilio.twiml.MessagingResponse();
     twiml.message(
-      "Maaf, sistem lagi sibuk. Ketik ulang pesan Anda atau ketik *JADWAL* untuk booking / *TOWING* untuk evakuasi."
+      "Sistem sedang sibuk. Ketik ulang.\nKetik *JADWAL* untuk booking / *TOWING* untuk evakuasi."
     );
     return res.type("text/xml").send(twiml.toString());
   }
