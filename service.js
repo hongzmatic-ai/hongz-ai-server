@@ -1,15 +1,10 @@
 // service.js
 // =====================================================
-// HONGZ AI ENGINE v5.7.1 – ZERO SILENT FAILURE (PATCH)
-// - Anti-bisu: semua jalur wajib selalu return pesan (try/catch di AI + generateReply)
-// - Timeout OpenAI (default 9 detik) + fallback otomatis
-// - Input normalisasi: buang spam "1." / rapikan spasi / trim
-// - Batasi prompt ke AI (agar tidak timeout)
-// - PATCH 5.7.1:
-//   1) Auto-fill wa.me?text= dipendekkan (hindari URL kepanjangan -> WhatsApp/Twilio gagal kirim)
-//   2) Output total (AI + tail + footer) dibatasi (hindari payload terlalu panjang)
-// - Max 2 pertanyaan, tone tenang-profesional, no alamat manual dari AI
-// - Footer selalu ON + auto-fill wa.me
+// HONGZ AI ENGINE v5.7-MATURE (NO %%% LINKS)
+// - Anti-bisu: semua jalur selalu return pesan
+// - OpenAI timeout + fallback otomatis
+// - Input normalization anti copy-paste "1." dst
+// - Footer brand mature (WA link polos tanpa ?text=... jadi tidak ada %20/%0A)
 // =====================================================
 
 const OpenAI = require("openai");
@@ -18,21 +13,14 @@ const OpenAI = require("openai");
 // OFFICIAL (LOCKED)
 // =====================
 const OFFICIAL = {
-  name: "Hongz Bengkel Spesialis Transmisi Matic",
+  name: "Hongz Bengkel – Spesialis Transmisi Matic",
   address: "Jl. M. Yakub No.10b, Medan Perjuangan",
   maps: "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9",
   hours: "Senin–Sabtu 09.00–17.00",
 
-  // WA numbers via ENV (recommended)
-  waAdmin: process.env.WA_ADMIN || "6281375430728",     // Papa (utama)
-  waCS: process.env.WA_CS || "6285752965167",           // CS (opsional)
-  waTowing: process.env.WA_TOWING || "6281375430728",   // towing line
-
-  // Auto handoff thresholds
-  handoffEnabled: (process.env.HANDOFF_ENABLED || "true").toLowerCase() === "true",
-  handoffSerious: (process.env.HANDOFF_SERIOUS || "true").toLowerCase() === "true",
-  handoffUrgent: (process.env.HANDOFF_URGENT || "true").toLowerCase() === "true",
-  handoffPremium: (process.env.HANDOFF_PREMIUM || "true").toLowerCase() === "true",
+  waAdmin: process.env.WA_ADMIN || "6281375430728",   // Papa (utama)
+  waCS: process.env.WA_CS || "6285752965167",         // CS (opsional)
+  waTowing: process.env.WA_TOWING || "6281375430728", // towing line
 };
 
 // =====================
@@ -40,29 +28,24 @@ const OFFICIAL = {
 // =====================
 const DEBUG = (process.env.DEBUG || "false").toLowerCase() === "true";
 const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || 9000); // 9s
-const MAX_USER_FOR_AI = Number(process.env.MAX_USER_FOR_AI || 700);      // max chars sent to AI
-const MAX_RETURN_CHARS = 900;                                            // sanitize cap for AI portion
-const MAX_TOTAL_OUT_CHARS = Number(process.env.MAX_TOTAL_OUT_CHARS || 1500); // cap overall reply (AI+tail+footer)
-const MAX_LINK_TEXT_CHARS = Number(process.env.MAX_LINK_TEXT_CHARS || 180);  // cap text embedded in wa.me links
+const MAX_USER_FOR_AI = Number(process.env.MAX_USER_FOR_AI || 700);
+const MAX_RETURN_CHARS = 900;
 
 function dlog(...args) {
-  if (DEBUG) console.log("[HONGZ v5.7.1]", ...args);
+  if (DEBUG) console.log("[HONGZ v5.7-MATURE]", ...args);
 }
 
 function cleanMsisdn(msisdn) {
   return String(msisdn || "").replace(/[^\d]/g, "");
 }
 
-function waLink(msisdn, text = "") {
+function waBaseLink(msisdn) {
   const n = cleanMsisdn(msisdn);
-  if (!n) return "";
-  if (!text) return `https://wa.me/${n}`;
-  const encoded = encodeURIComponent(text);
-  return `https://wa.me/${n}?text=${encoded}`;
+  return n ? `https://wa.me/${n}` : "";
 }
 
 // =====================
-// INPUT NORMALIZATION (v5.7)
+// INPUT NORMALIZATION
 // =====================
 function norm(s = "") {
   return String(s).toLowerCase().replace(/\s+/g, " ").trim();
@@ -71,12 +54,10 @@ function norm(s = "") {
 function normalizeUserText(raw = "") {
   let t = String(raw || "").replace(/\r/g, "").trim();
 
-  // buang numbering di awal yang sering dari copy-paste chat
-  // contoh: "1. Innova 2008..." atau "1 Innova 2008..."
+  // buang numbering awal dari copy paste chat: "1. xxx" / "1 xxx"
   t = t.replace(/^\s*\d+\s*[\.\)]\s*/g, "");
   t = t.replace(/^\s*\d+\s+/g, "");
 
-  // rapikan spasi
   t = t.replace(/\s+/g, " ").trim();
   return t;
 }
@@ -88,235 +69,77 @@ function truncateForAI(text) {
 }
 
 // =====================
-// PATCH 5.7.1: SHORT TEXT FOR WA.ME LINKS (ANTI URL KEPANJANGAN)
+// FOOTER (BRAND MATURE) - NO AUTOFILL
 // =====================
-function shortForLink(text, max = MAX_LINK_TEXT_CHARS) {
-  let t = String(text || "").replace(/\s+/g, " ").trim();
-  if (t.length <= max) return t;
-  return t.slice(0, max).trim() + "…";
-}
-
-// =====================
-// AUTO-FILL TEMPLATES
-// =====================
-function templateAdmin(userText, meta) {
-  const flags = [];
-  if (meta?.tier) flags.push(`TIER:${meta.tier}`);
-  if (meta?.urgency) flags.push("URGENT");
-  if (meta?.emotion) flags.push(`EMO:${meta.emotion}`);
-  if (meta?.priceFocus) flags.push("PRICE_Q");
-  if (meta?.topic) flags.push(`TOPIC:${meta.topic}`);
-
-  return [
-    "Halo Admin Hongz, saya butuh bantuan.",
-    `Keluhan: ${shortForLink(String(userText || "").trim(), MAX_LINK_TEXT_CHARS)}`,
-    `Catatan sistem: ${flags.join(" | ") || "-"}`,
-    "",
-    "Saya siap kirim detail:",
-    "- Nama:",
-    "- Mobil/Tahun:",
-    "- Lokasi sekarang (share lokasi):",
-    "- Bisa jalan atau perlu towing:",
-  ].join("\n");
-}
-
-function templateTowing(userText) {
-  return [
-    "Halo tim TOWING Hongz, saya butuh evakuasi.",
-    `Keluhan: ${shortForLink(String(userText || "").trim(), MAX_LINK_TEXT_CHARS)}`,
-    "",
-    "Saya kirim share lokasi sekarang. Mohon arahkan proses towing ke Hongz.",
-  ].join("\n");
-}
-
-function templateCS(userText) {
-  return [
-    "Halo CS Hongz, saya mau konsultasi & booking.",
-    `Keluhan: ${shortForLink(String(userText || "").trim(), MAX_LINK_TEXT_CHARS)}`,
-    "",
-    "Saya kirim detail:",
-    "- Nama:",
-    "- Mobil/Tahun:",
-    "- Gejala (dingin/panas/macet):",
-    "- Waktu rencana datang:",
-  ].join("\n");
-}
-
-// =====================
-// FOOTER (ALWAYS ON) + AUTO-FILL LINKS
-// =====================
-function footerCTA(userText = "", meta = {}) {
-  const adminFilled = waLink(OFFICIAL.waAdmin, templateAdmin(userText, meta));
-  const csFilled = waLink(OFFICIAL.waCS, templateCS(userText));
-  const towFilled = waLink(OFFICIAL.waTowing, templateTowing(userText));
+function footerCTA() {
+  const admin = waBaseLink(OFFICIAL.waAdmin);
+  const cs = waBaseLink(OFFICIAL.waCS);
+  const tow = waBaseLink(OFFICIAL.waTowing);
 
   const lines = [
     `📍 ${OFFICIAL.name}`,
     OFFICIAL.address,
     `🧭 ${OFFICIAL.maps}`,
     `⏱ ${OFFICIAL.hours}`,
+    "",
   ];
 
-  if (adminFilled) lines.push(`📲 Admin (Papa) – klik & pesan otomatis: ${adminFilled}`);
+  if (admin) lines.push(`📲 Admin: ${admin}`);
+  if (cs && cleanMsisdn(OFFICIAL.waCS) !== cleanMsisdn(OFFICIAL.waAdmin)) lines.push(`💬 CS: ${cs}`);
+  if (tow && cleanMsisdn(OFFICIAL.waTowing) !== cleanMsisdn(OFFICIAL.waAdmin)) lines.push(`🚚 Towing: ${tow}`);
 
-  if (
-    csFilled &&
-    cleanMsisdn(OFFICIAL.waCS) &&
-    cleanMsisdn(OFFICIAL.waCS) !== cleanMsisdn(OFFICIAL.waAdmin)
-  ) {
-    lines.push(`💬 CS Cepat – klik & pesan otomatis: ${csFilled}`);
-  }
-
-  if (
-    towFilled &&
-    cleanMsisdn(OFFICIAL.waTowing) &&
-    cleanMsisdn(OFFICIAL.waTowing) !== cleanMsisdn(OFFICIAL.waAdmin)
-  ) {
-    lines.push(`🚚 Towing Line – klik & pesan otomatis: ${towFilled}`);
-  }
-
-  lines.push("Ketik: *JADWAL* (booking) / *TOWING* (evakuasi) / *ADMIN* (hubungi hongz).");
   return lines.join("\n");
 }
 
 // =====================
-// PROFESSIONAL PRICE STATEMENT (CALM)
+// BLOCKS
 // =====================
 function professionalPriceStatement() {
   return [
     "Kami bekerja berbasis diagnosa, bukan asumsi.",
-    "Pada sistem kendaraan modern, estimasi tanpa pemeriksaan berisiko menyesatkan.",
-    "Agar akurat & aman, unit perlu kami cek dulu (scan/tes jalan/cek tekanan/cek kebocoran).",
+    "Estimasi tanpa pemeriksaan berisiko tidak akurat.",
+    "Agar tepat & aman, unit perlu kami cek dulu (scan/tes jalan/cek tekanan/cek kebocoran).",
   ].join("\n");
 }
 
-// =====================
-// TOWING BLOCK
-// =====================
 function towingBlock() {
   return [
     "Jika unit tidak bisa berjalan / terasa berisiko, sebaiknya jangan dipaksakan.",
-    "Ketik *TOWING* dan kirim share lokasi Anda — kami bantu arahkan evakuasi ke workshop.",
+    "Jika perlu, gunakan towing untuk mencegah kerusakan melebar.",
   ].join("\n");
 }
 
 // =====================
-// HELPERS
+// DETECTION
 // =====================
 function containsAny(text, arr) {
   const t = norm(text);
   return arr.some((k) => t.includes(k));
 }
-function countMatches(text, arr) {
-  const t = norm(text);
-  return arr.filter((k) => t.includes(k)).length;
-}
 
-// =====================
-// VEHICLE TIER
-// =====================
-function detectTier(text) {
-  const t = norm(text);
-
-  const premium = [
-    "land cruiser", "landcruiser", "lc200", "lc300", "alphard", "vellfire", "lexus",
-    "bmw", "mercedes", "benz", "audi", "porsche", "range rover", "land rover", "prado"
-  ];
-
-  const midPremium = [
-    "x-trail t32", "xtrail t32", "x trail t32",
-    "crv turbo", "cx-5", "cx5", "harrier", "forester", "outlander"
-  ];
-
-  if (containsAny(t, premium)) return "PREMIUM";
-  if (containsAny(t, midPremium)) return "MID_PREMIUM";
-  return "STANDARD";
-}
-
-// =====================
-// URGENCY DETECTION
-// =====================
 function detectUrgency(text) {
-  const t = norm(text);
   const urgent = [
     "tidak bisa jalan", "gak bisa jalan", "mogok", "tidak bergerak",
-    "panas gak bisa jalan", "panas tidak bisa jalan", "overheat",
-    "masuk d tapi tidak jalan", "masuk r tapi tidak jalan",
+    "overheat", "masuk d tapi tidak jalan", "masuk r tapi tidak jalan",
     "selip parah", "rpm naik tapi tidak jalan"
   ];
-  return containsAny(t, urgent);
+  return containsAny(text, urgent);
 }
 
-// =====================
-// PRICE FOCUS DETECTION
-// =====================
 function isPriceFocus(text) {
-  const t = norm(text);
   const bait = ["berapa", "biaya", "harga", "range", "kisaran", "termurah", "murah", "nego", "diskon", "patokan", "budget"];
-  return containsAny(t, bait);
+  return containsAny(text, bait);
 }
 
-// =====================
-// TOPIC DETECTION (v5.7)
-// =====================
 function detectTopic(text) {
-  const t = norm(text);
-
   const trans = [
     "matic", "transmisi", "cvt", "at", "gear", "gigi", "pindah gigi", "selip", "jedug",
-    "rpm tinggi", "gaung", "dengung", "torque converter", "torsi", "tc", "valve body", "solenoid"
+    "rpm tinggi", "gaung", "dengung", "torque converter", "valve body", "solenoid"
   ];
-
   const ac = ["ac", "aircond", "air conditioner", "tidak dingin", "kurang dingin", "freon", "kompresor", "evaporator"];
-
-  if (containsAny(t, ac)) return "AC";
-  if (containsAny(t, trans)) return "TRANSMISSION";
+  if (containsAny(text, ac)) return "AC";
+  if (containsAny(text, trans)) return "TRANSMISSION";
   return "GENERAL";
-}
-
-// =====================
-// EMOTIONAL READING
-// =====================
-function emotionalLabel(text) {
-  const t = norm(text);
-
-  const seriousSignals = [
-    "hari ini", "sekarang", "darurat", "urgent", "tolong",
-    "mogok", "tidak bisa jalan", "di jalan", "di tol",
-    "datang", "alamat", "lokasi", "share lokasi", "rute",
-    "jadwal", "booking", "towing", "derek"
-  ];
-
-  const isengSignals = ["cuma tanya", "sekedar tanya", "iseng", "test", "coba", "cek cek"];
-  const priceSignals = ["murah", "termurah", "nego", "diskon", "harga", "biaya"];
-
-  const s = countMatches(t, seriousSignals);
-  const i = countMatches(t, isengSignals);
-  const p = countMatches(t, priceSignals);
-
-  if (p >= 2 && p >= s) return "PRICE_FOCUS";
-  if (s >= 2 && s > p) return "SERIOUS";
-  if (i >= 1 && s === 0) return "CASUAL";
-  return "NEUTRAL";
-}
-
-// =====================
-// AUTO HANDOFF DECISION
-// =====================
-function shouldHandoff(meta) {
-  if (!OFFICIAL.handoffEnabled) return false;
-
-  const tierOk = OFFICIAL.handoffPremium && (meta.tier === "PREMIUM" || meta.tier === "MID_PREMIUM");
-  const urgentOk = OFFICIAL.handoffUrgent && meta.urgency === true;
-  const seriousOk = OFFICIAL.handoffSerious && meta.emotion === "SERIOUS";
-
-  return tierOk || urgentOk || seriousOk;
-}
-
-function handoffLine(userText, meta) {
-  const link = waLink(OFFICIAL.waAdmin, templateAdmin(userText, meta));
-  if (!link) return "";
-  return `✅ Untuk respon prioritas, klik Admin (pesan sudah terisi): ${link}`;
 }
 
 // =====================
@@ -326,22 +149,10 @@ function sanitizeAI(text = "") {
   let t = String(text || "").replace(/\r/g, "").trim();
   if (!t) return "";
 
-  // Hindari alamat manual dari AI (footer resmi tetap boleh)
-  const bannedFragments = [
-    "[maps link]", "maps link", "alamat:", "jl.", "jalan ", "no.", "nomor",
-    "alamat bengkel", "alamat kami", "lokasi kami"
-  ];
+  // batasi panjang
+  if (t.length > MAX_RETURN_CHARS) t = t.slice(0, MAX_RETURN_CHARS).trim();
 
-  let lines = t.split("\n").map(l => l.trim()).filter(Boolean);
-  lines = lines.filter(line => {
-    const low = line.toLowerCase();
-    if (bannedFragments.some(b => low.includes(b))) return false;
-    return true;
-  });
-
-  t = lines.join("\n").trim();
-
-  // enforce max 2 question marks
+  // max 2 tanda tanya
   const qCount = (t.match(/\?/g) || []).length;
   if (qCount > 2) {
     let count = 0;
@@ -356,68 +167,47 @@ function sanitizeAI(text = "") {
     t = out.trim();
   }
 
-  // cap AI portion length
-  if (t.length > MAX_RETURN_CHARS) t = t.slice(0, MAX_RETURN_CHARS).trim();
-
   return t;
 }
 
 // =====================
-// SYSTEM PROMPT (ADAPTIVE)
+// SYSTEM PROMPT
 // =====================
-function buildSystemPrompt({ tier, urgency, emotion, priceFocus, topic }) {
-  const tone =
-    tier === "PREMIUM" || tier === "MID_PREMIUM"
-      ? "tegas, elegan, premium specialist (singkat, tidak menakutkan)"
-      : "tenang, jelas, bersahabat-profesional (singkat, tidak menakutkan)";
+function buildSystemPrompt({ urgency, priceFocus, topic }) {
+  const priority = urgency
+    ? "Prioritas keselamatan: sarankan jangan dipaksakan + opsi towing."
+    : "Arahkan langkah cek paling efisien.";
 
-  const priority =
-    urgency
-      ? "Prioritas keselamatan: sarankan jangan dipaksakan + opsi towing."
-      : "Arahkan langkah cek paling efisien.";
-
-  const priceRule =
-    priceFocus
-      ? "Jika ditanya biaya/harga: jangan beri angka fix. Tekankan diagnosa dulu secara profesional."
-      : "Jangan membuka angka tanpa pemeriksaan.";
-
-  const emo =
-    emotion === "PRICE_FOCUS"
-      ? "Tipe price-focused: jawab singkat, profesional, tidak berdebat, arahkan diagnosa."
-      : emotion === "SERIOUS"
-      ? "Tipe serius: respons cepat, fokus solusi & ajakan datang."
-      : "Tipe netral: edukasi ringkas, ajakan datang.";
+  const priceRule = priceFocus
+    ? "Jika ditanya biaya/harga: jangan beri angka fix. Tekankan diagnosa dulu secara profesional."
+    : "Jangan membuka angka tanpa pemeriksaan.";
 
   const topicRule =
     topic === "AC"
-      ? "Topik AC: jelaskan kemungkinan penyebab umum secara ringkas, sarankan cek tekanan/kompresor/kebocoran, ajak datang. Tetap jangan beri angka fix."
+      ? "Topik AC: sebut kemungkinan penyebab umum singkat, arahkan cek tekanan/kompresor/kebocoran, ajak datang."
       : topic === "TRANSMISSION"
-      ? "Topik transmisi: jelaskan kemungkinan penyebab umum secara ringkas, sarankan diagnosa transmisi, ajak datang. Aman & tidak menakutkan."
-      : "Topik otomotif umum: jawab ringkas, ajak inspeksi.";
+      ? "Topik transmisi: sebut kemungkinan penyebab umum singkat (slip/tekanan oli/solenoid/ATF), ajak datang."
+      : "Topik umum: jawab ringkas, ajak inspeksi.";
 
   return `
-Anda adalah CS WhatsApp profesional untuk ${OFFICIAL.name} (Medan).
-Gaya: ${tone}. Tidak kaku. Tidak agresif. Tidak memancing konflik.
+Anda adalah CS WhatsApp profesional untuk Hongz Bengkel di Medan.
+Gaya: tenang, jelas, profesional. Tidak menakutkan.
 
 ATURAN WAJIB:
-- Jangan pernah menulis alamat apa pun (jangan menulis "Jl/Jalan/No/Alamat").
-- Jangan pakai placeholder seperti [maps link].
-- Maksimal 2 pertanyaan (<=2 tanda "?").
-- Jangan berdebat.
+- Maksimal 2 pertanyaan.
+- Jangan beri angka harga fix.
 - ${priceRule}
 - ${priority}
-- ${emo}
 - ${topicRule}
 
 OUTPUT:
-- 1 pesan WhatsApp ringkas (maks 900 karakter), Bahasa Indonesia.
-- 1 paragraf analisa high-level (tidak menakutkan).
-- Jika perlu: ajukan maks 2 pertanyaan triase yang paling menentukan.
+- 1 pesan WhatsApp ringkas (<=900 karakter).
+- Jika perlu: maks 2 pertanyaan triase.
 `.trim();
 }
 
 // =====================
-// TIMEOUT HELPER (v5.7)
+// TIMEOUT HELPER
 // =====================
 function withTimeout(promise, ms, label = "timeout") {
   return Promise.race([
@@ -427,22 +217,11 @@ function withTimeout(promise, ms, label = "timeout") {
 }
 
 // =====================
-// OUTPUT CAP (PATCH 5.7.1)
-// =====================
-function capTotalOut(text) {
-  let t = String(text || "");
-  if (t.length <= MAX_TOTAL_OUT_CHARS) return t;
-  return t.slice(0, MAX_TOTAL_OUT_CHARS).trim();
-}
-
-// =====================
-// AI REPLY (v5.7.1 anti-bisu)
+// AI REPLY (ANTI BISU)
 // =====================
 async function aiReply(userTextOriginal, meta) {
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-
-  // teks utk template harus original, utk AI dipotong agar cepat
   const userTextForAI = truncateForAI(userTextOriginal);
 
   try {
@@ -450,7 +229,7 @@ async function aiReply(userTextOriginal, meta) {
 
     const client = new OpenAI({ apiKey });
 
-    dlog("OpenAI call:", { model, timeout: OPENAI_TIMEOUT_MS, meta });
+    dlog("OpenAI call", { model, timeout: OPENAI_TIMEOUT_MS, meta });
 
     const resp = await withTimeout(
       client.chat.completions.create({
@@ -469,147 +248,128 @@ async function aiReply(userTextOriginal, meta) {
     text = sanitizeAI(text);
 
     if (!text) {
-      text = "Baik. Agar cepat tepat, mohon jawab 2 hal: gejala muncul saat dingin atau saat panas? ada jedug/selip?";
+      text = "Baik. Agar cepat tepat, mohon info 2 hal: gejala muncul saat dingin atau saat panas? ada jedug/selip?";
       text = sanitizeAI(text);
     }
 
     const tail = [];
     if (meta.urgency) tail.push(towingBlock());
     if (meta.priceFocus) tail.push(professionalPriceStatement());
-    if (shouldHandoff(meta)) tail.push(handoffLine(userTextOriginal, meta));
-    tail.push(footerCTA(userTextOriginal, meta));
+    tail.push(footerCTA());
 
-    const out = capTotalOut([text, ...tail].join("\n\n"));
-    return out;
-
+    return [text, ...tail].join("\n\n");
   } catch (err) {
-    console.log("[HONGZ v5.7.1] OPENAI ERROR:", err?.message || err);
+    console.log("[HONGZ v5.7-MATURE] OPENAI ERROR:", err?.message || err);
 
-    const fallbackParts = [];
+    const fallback = [];
 
     if (meta.topic === "AC") {
-      fallbackParts.push(
-        "Baik. Untuk AC tidak dingin, penyebab umum biasanya: freon kurang/ada kebocoran, kompresor lemah, kipas kondensor, atau evaporator kotor. Agar akurat, perlu cek tekanan & inspeksi kebocoran."
+      fallback.push(
+        "Baik. AC tidak dingin biasanya karena freon kurang/kebocoran, kompresor melemah, kipas kondensor, atau evaporator kotor. Agar akurat, perlu cek tekanan & inspeksi kebocoran."
       );
     } else if (meta.topic === "TRANSMISSION") {
-      fallbackParts.push(
-        "Baik. Gejala rpm tinggi/baru masuk gigi bisa terkait slip, tekanan oli transmisi, solenoid/valve body, atau kondisi ATF. Agar tidak salah diagnosa, perlu pengecekan langsung."
+      fallback.push(
+        "Baik. Gejala rpm tinggi/baru masuk gigi bisa terkait slip, tekanan oli transmisi, solenoid/valve body, atau kondisi ATF. Agar tidak salah arah, perlu pengecekan langsung."
       );
     } else {
-      fallbackParts.push("Baik. Untuk memastikan penyebabnya secara akurat, unit perlu kami cek langsung.");
+      fallback.push("Baik. Untuk memastikan penyebabnya, unit perlu kami cek langsung.");
     }
 
-    if (meta.urgency) fallbackParts.push("\n" + towingBlock());
-    if (meta.priceFocus) fallbackParts.push("\n" + professionalPriceStatement());
-    if (shouldHandoff(meta)) fallbackParts.push("\n" + handoffLine(userTextOriginal, meta));
+    if (meta.urgency) fallback.push("\n" + towingBlock());
+    if (meta.priceFocus) fallback.push("\n" + professionalPriceStatement());
+    fallback.push("\n" + footerCTA());
 
-    fallbackParts.push("\n" + footerCTA(userTextOriginal, meta));
-
-    const out = capTotalOut(fallbackParts.join("\n"));
-    return out;
+    return fallback.join("\n");
   }
 }
 
 // =====================
-// MAIN ENTRY (v5.7.1 safety wrapper)
+// MAIN ENTRY (SAFETY WRAPPER)
 // =====================
 async function generateReply(userTextRaw) {
   const userText = normalizeUserText(userTextRaw);
   const t = norm(userText);
 
   try {
-    // Commands (deterministic)
+    // Commands (simple)
     if (t === "jadwal") {
-      return capTotalOut([
+      return [
         "Silakan kirim format:",
         "NAMA / MOBIL / TAHUN / GEJALA / JAM DATANG",
         "",
-        footerCTA(userText, { tier: "STANDARD", urgency: false, emotion: "NEUTRAL", priceFocus: false, topic: "GENERAL" }),
-      ].join("\n"));
+        footerCTA(),
+      ].join("\n");
     }
 
     if (t === "admin") {
-      const meta = { tier: "STANDARD", urgency: false, emotion: "SERIOUS", priceFocus: false, topic: "GENERAL" };
-      return capTotalOut([
-        "Siap. Klik Admin (pesan otomatis sudah terisi):",
-        waLink(OFFICIAL.waAdmin, templateAdmin(userText, meta)),
+      return [
+        "Siap. Silakan hubungi Admin di link ini:",
+        waBaseLink(OFFICIAL.waAdmin),
         "",
-        footerCTA(userText, meta),
-      ].join("\n"));
+        footerCTA(),
+      ].join("\n");
     }
 
     if (t === "cs") {
-      return capTotalOut([
-        "Siap. Klik CS (pesan otomatis sudah terisi):",
-        waLink(OFFICIAL.waCS, templateCS(userText)),
+      return [
+        "Siap. Silakan hubungi CS di link ini:",
+        waBaseLink(OFFICIAL.waCS),
         "",
-        footerCTA(userText, { tier: "STANDARD", urgency: false, emotion: "NEUTRAL", priceFocus: false, topic: "GENERAL" }),
-      ].join("\n"));
+        footerCTA(),
+      ].join("\n");
     }
 
     if (t.includes("towing") || t.includes("derek")) {
-      return capTotalOut([
+      return [
         towingBlock(),
         "",
-        "Klik Towing Line (pesan otomatis sudah terisi):",
-        waLink(OFFICIAL.waTowing, templateTowing(userText)),
+        "Towing line:",
+        waBaseLink(OFFICIAL.waTowing),
         "",
-        footerCTA(userText, { tier: "STANDARD", urgency: true, emotion: "SERIOUS", priceFocus: false, topic: "GENERAL" }),
-      ].join("\n"));
+        footerCTA(),
+      ].join("\n");
     }
 
-    if (t.includes("share lokasi") || t === "lokasi") {
-      const meta = { tier: "STANDARD", urgency: false, emotion: "SERIOUS", priceFocus: false, topic: "GENERAL" };
-      return capTotalOut([
-        "Ini link lokasi resmi workshop Hongz:",
+    if (t.includes("lokasi") || t.includes("share lokasi")) {
+      return [
+        "Lokasi workshop Hongz:",
         OFFICIAL.maps,
         "",
-        "Jika butuh evakuasi, ketik *TOWING* lalu kirim share lokasi Anda.",
-        "",
-        handoffLine(userText, meta) || "",
-        "",
-        footerCTA(userText, meta),
-      ].filter(Boolean).join("\n"));
+        footerCTA(),
+      ].join("\n");
     }
 
     // Meta detection
-    const tier = detectTier(userText);
     const urgency = detectUrgency(userText);
-    const emotion = emotionalLabel(userText);
     const priceFocus = isPriceFocus(userText);
     const topic = detectTopic(userText);
 
-    const meta = { tier, urgency, emotion, priceFocus, topic };
+    const meta = { urgency, priceFocus, topic };
 
-    // Price-focus quick lane (fast, deterministic)
-    if (emotion === "PRICE_FOCUS") {
-      const msg = [
+    // Price-focus quick lane (fast)
+    if (priceFocus) {
+      return [
         professionalPriceStatement(),
         "",
-        "Jika unit masih bisa berjalan, silakan ketik *JADWAL* untuk pemeriksaan.",
-        "Jika tidak memungkinkan, kami bisa bantu arahkan *TOWING*.",
+        "Agar cepat tepat, sebaiknya unit kami cek langsung.",
+        "Jika unit tidak memungkinkan berjalan, towing adalah opsi paling aman.",
         "",
-        (shouldHandoff(meta) ? handoffLine(userText, meta) : ""),
-        "",
-        footerCTA(userText, meta),
-      ].filter(Boolean).join("\n");
-
-      return capTotalOut(msg);
+        footerCTA(),
+      ].join("\n");
     }
 
-    // AI adaptive (anti-bisu)
-    return capTotalOut(await aiReply(userText, meta));
-
+    // AI adaptive
+    return await aiReply(userText, meta);
   } catch (err) {
-    console.log("[HONGZ v5.7.1] FATAL generateReply ERROR:", err?.message || err);
+    console.log("[HONGZ v5.7-MATURE] FATAL generateReply ERROR:", err?.message || err);
 
-    const meta = { tier: "STANDARD", urgency: false, emotion: "NEUTRAL", priceFocus: false, topic: "GENERAL" };
-    return capTotalOut([
+    // ultimate fallback (tidak boleh bisu)
+    return [
       "Maaf, sistem sedang padat. Tapi kami tetap siap bantu.",
-      "Silakan ketik *JADWAL* untuk booking pemeriksaan, atau *ADMIN* untuk respon prioritas.",
+      "Silakan ketik *JADWAL* untuk booking, atau ketik *ADMIN* untuk hubungi Admin.",
       "",
-      footerCTA(userText, meta),
-    ].join("\n"));
+      footerCTA(),
+    ].join("\n");
   }
 }
 
