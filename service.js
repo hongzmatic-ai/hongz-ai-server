@@ -24,7 +24,7 @@ const OFFICIAL = {
   hours: "Senin–Sabtu 09.00–17.00",
 
   // WA numbers via ENV (recommended)
-  waAdmin: process.env.WA_ADMIN || "6281375430728",     // Papa (utama)
+  waAdmin: process.env.WA_ADMIN || "6281375430728",     // hongz (utama)
   waCS: process.env.WA_CS || "6285752965167",           // CS (opsional)
   waTowing: process.env.WA_TOWING || "6281375430728",   // towing line
 
@@ -157,7 +157,7 @@ function footerCTA(userText = "", meta = {}) {
     `⏱ ${OFFICIAL.hours}`,
   ];
 
-  if (adminFilled) lines.push(`📲 Admin (Papa) – klik & pesan otomatis: ${adminFilled}`);
+  if (adminFilled) lines.push(`📲 Admin (hongz) – klik & pesan otomatis: ${adminFilled}`);
 
   if (
     csFilled &&
