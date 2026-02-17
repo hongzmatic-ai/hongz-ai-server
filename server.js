@@ -1,31 +1,36 @@
 /**
- * HONGZ AI SERVER — ENTERPRISE C+ (ONE FILE) — FULL REPLACE
+ * HONGZ AI SERVER — ENTERPRISE C+ (ONE FILE) — FULL REPLACE (CTA TAG + Closing Soft + Scarcity)
  * - Dual webhook: /twilio/webhook & /whatsapp/incoming
  * - Auto ticket + lead scoring + priority tags
- * - Admin notif: towing + share lokasi + jadwal + customer wa.me link
- * - Admin commands (ONLY ADMIN): LIST, STATS, CLAIM T-xxxxx, CLOSE T-xxxxx, NOTE T-xxxxx ...
- * - Follow-up cron (2 tahap): 18h & 48h (default) -> /cron/followup?key=CRON_KEY
+ * - Admin notif: towing + share lokasi + jadwal + customer wa.me link + customer number
+ * - Admin commands (ONLY ADMIN): HELP, LIST, STATS, CLAIM T-xxxxx, CLOSE T-xxxxx, NOTE T-xxxxx ...
+ * - Follow-up cron (2 tahap): 18h & 48h -> /cron/followup?key=CRON_KEY
+ * - SCARCITY_MODE: soft|hard (Papa pilih soft)
  *
  * REQUIRED ENV:
  *   TWILIO_ACCOUNT_SID
  *   TWILIO_AUTH_TOKEN
- *   TWILIO_WHATSAPP_FROM     e.g. "whatsapp:+6285729651657" (Twilio sender)
- *   ADMIN_WHATSAPP_TO        e.g. "whatsapp:+6281375430728" (Papa/admin)
+ *   TWILIO_WHATSAPP_FROM      e.g. "whatsapp:+6285729651657" (Twilio sender)
+ *   ADMIN_WHATSAPP_TO         e.g. "whatsapp:+6281375430728" (Papa/admin)
  *
  * RECOMMENDED ENV (Branding):
  *   BIZ_NAME, BIZ_ADDRESS, BIZ_HOURS, MAPS_LINK
  *   WHATSAPP_ADMIN, WHATSAPP_CS (public https://wa.me/ links)
  *
- * FOLLOW-UP (Mode C+):
+ * FOLLOW-UP:
  *   FOLLOWUP_ENABLED="true"
  *   FOLLOWUP_STAGE1_HOURS="18"
  *   FOLLOWUP_STAGE2_HOURS="48"
  *   FOLLOWUP_COOLDOWN_HOURS="24"
  *   FOLLOWUP_MAX_PER_CUSTOMER="2"
- *   CRON_KEY="hongzCron_xxx"  (secret)
+ *   CRON_KEY="hongzCron_xxx"
+ *
+ * SCARCITY:
+ *   SCARCITY_MODE="soft"  (soft|hard)
+ *   SCARCITY_SLOTS="2"    (dipakai jika hard)
  *
  * STORAGE:
- *   DATA_DIR="/var/data" (Render persistent disk)
+ *   DATA_DIR="/var/data"  (Render persistent disk)
  *
  * DEBUG:
  *   DEBUG="true"
@@ -38,7 +43,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-// -------- ENV --------
+// ---------- ENV ----------
 const {
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
@@ -58,6 +63,9 @@ const {
   FOLLOWUP_COOLDOWN_HOURS = "24",
   FOLLOWUP_MAX_PER_CUSTOMER = "2",
 
+  SCARCITY_MODE = "soft", // soft | hard
+  SCARCITY_SLOTS = "2",
+
   DATA_DIR = "/var/data",
   CRON_KEY = "",
   DEBUG = "false",
@@ -72,12 +80,12 @@ if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !ADMIN
 
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
-// -------- APP --------
+// ---------- APP ----------
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-// -------- STORAGE (JSON DB) --------
+// ---------- STORAGE ----------
 function ensureDir(dir) { try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {} }
 ensureDir(DATA_DIR);
 
@@ -85,24 +93,20 @@ const DB_FILE = path.join(DATA_DIR, "hongz_enterprise_db.json");
 
 function loadDB() {
   try { return JSON.parse(fs.readFileSync(DB_FILE, "utf8")); }
-  catch (_) {
-    return {
-      customers: {}, // key: customerId
-      tickets: {},   // key: ticketId
-      events: [],    // recent events
-    };
-  }
+  catch (_) { return { customers: {}, tickets: {}, events: [] }; }
 }
 function saveDB(db) {
   try { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf8"); }
   catch (e) { console.error("DB save failed:", e.message); }
 }
+
 function nowISO() { return new Date().toISOString(); }
 function nowMs() { return Date.now(); }
 
 function sha16(s) {
   return crypto.createHash("sha256").update(String(s)).digest("hex").slice(0, 16);
 }
+
 function escapeXml(unsafe) {
   return String(unsafe)
     .replace(/&/g, "&amp;")
@@ -111,12 +115,11 @@ function escapeXml(unsafe) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 }
+
 function normText(s) {
   return String(s || "").replace(/\u200b/g, "").trim();
 }
-function upper(s) {
-  return normText(s).toUpperCase();
-}
+function upper(s) { return normText(s).toUpperCase(); }
 
 function isCommand(body, cmd) {
   const t = upper(body);
@@ -124,12 +127,10 @@ function isCommand(body, cmd) {
   return t === c || t.startsWith(c + " ") || t.includes("\n" + c) || t.includes(" " + c + " ");
 }
 
-function normalizeFrom(from) {
-  // "whatsapp:+62813..." -> "whatsapp:+62813..."
-  return String(from || "").trim();
-}
+function normalizeFrom(from) { return String(from || "").trim(); }
+
+// "whatsapp:+62813..." -> "62813..."
 function cleanMsisdn(from) {
-  // "whatsapp:+62813..." -> "62813..."
   return String(from || "").replace(/^whatsapp:\+?/i, "").replace(/[^\d]/g, "");
 }
 function toWaMe(from) {
@@ -138,13 +139,12 @@ function toWaMe(from) {
 }
 
 function isAdmin(from) {
-  // compare normalized: both should be like "whatsapp:+62813..."
   const a = normalizeFrom(ADMIN_WHATSAPP_TO).toLowerCase();
   const f = normalizeFrom(from).toLowerCase();
   return a && f && a === f;
 }
 
-// -------- LOCATION PARSER --------
+// ---------- LOCATION PARSER ----------
 function extractLocation(reqBody) {
   const lat = reqBody.Latitude || reqBody.latitude;
   const lng = reqBody.Longitude || reqBody.longitude;
@@ -164,13 +164,12 @@ function extractLocation(reqBody) {
 
   const body = String(reqBody.Body || "").trim();
   const mapsLinkMatch = body.match(/https?:\/\/(maps\.app\.goo\.gl|www\.google\.com\/maps|goo\.gl\/maps)[^\s]+/i);
-  if (mapsLinkMatch) {
-    return { type: "link", mapsUrl: mapsLinkMatch[0], raw: body };
-  }
+  if (mapsLinkMatch) return { type: "link", mapsUrl: mapsLinkMatch[0], raw: body };
+
   return null;
 }
 
-// -------- BRAND SIGNATURE (MATURE VIEW) --------
+// ---------- BRAND SIGNATURE ----------
 function businessSignature() {
   return [
     `📍 ${BIZ_NAME}`,
@@ -189,11 +188,87 @@ function businessSignature() {
     `*TOWING* bila unit tidak bisa berjalan`,
   ].join("\n");
 }
+
 function confidenceLine() {
   return `✅ Tenang ya, kami bantu sampai jelas langkahnya.`;
 }
 
-// -------- LEAD SCORING --------
+// ---------- SCARCITY (soft/hard + tag boost) ----------
+function scarcityLine(ticket) {
+  const mode = String(SCARCITY_MODE || "soft").toLowerCase();
+  const slots = Number(SCARCITY_SLOTS || 2);
+  const tag = String(ticket?.tag || "");
+
+  if (mode === "hard") {
+    const s = isFinite(slots) ? slots : 2;
+    // sedikit boost untuk priority
+    if (tag.includes("PRIORITY")) return `⏳ Slot diagnosa hari ini tinggal ${s}. Jika berkenan, kami amankan lebih dulu.`;
+    return `⏳ Slot pemeriksaan hari ini tinggal ${s}.`;
+  }
+
+  // soft
+  if (tag.includes("PRIORITY")) return "⏳ Slot diagnosa hari ini terbatas agar penanganan tetap fokus & presisi.";
+  if (tag.includes("POTENTIAL")) return "⏳ Slot pemeriksaan terbatas—lebih cepat dicek, lebih aman.";
+  return "⏳ Jika memungkinkan, sebaiknya dicek lebih awal.";
+}
+
+// ---------- CTA berdasarkan TAG + TYPE (closing soft naik) ----------
+function ctaLine(ticket) {
+  const tag = String(ticket?.tag || "");
+  const type = String(ticket?.type || "GENERAL");
+
+  const isPriority = tag.includes("PRIORITY");
+  const isPotential = tag.includes("POTENTIAL");
+
+  if (type === "TOWING") {
+    if (isPriority) {
+      return [
+        "🚨 Agar cepat ditangani, silakan kirim *share lokasi sekarang* ya.",
+        "Begitu lokasi masuk, admin langsung follow up untuk arahkan evakuasi."
+      ].join("\n");
+    }
+    if (isPotential) {
+      return [
+        "Jika unit terasa berisiko, silakan kirim *share lokasi* ya.",
+        "Admin follow up untuk bantu langkah aman."
+      ].join("\n");
+    }
+    return "Jika unit tidak aman dijalankan, silakan kirim *share lokasi*—admin akan follow up.";
+  }
+
+  if (type === "JADWAL") {
+    if (isPriority) {
+      return [
+        "📅 Kami bisa siapkan slot prioritas untuk diagnosa presisi.",
+        "Silakan ketik: *JADWAL* + jam perkiraan (contoh: JADWAL jam 3 sore)."
+      ].join("\n");
+    }
+    if (isPotential) {
+      return [
+        "📅 Jika Anda siap, ketik *JADWAL* + jam perkiraan datang.",
+        "Admin bantu pilihkan waktu yang paling pas."
+      ].join("\n");
+    }
+    return "Jika berkenan, ketik *JADWAL* untuk booking pemeriksaan.";
+  }
+
+  // GENERAL
+  if (isPriority) {
+    return [
+      "✅ Agar tidak melebar, kami sarankan booking lebih cepat.",
+      "Ketik *JADWAL* (atau kirim *share lokasi* bila unit tidak aman)."
+    ].join("\n");
+  }
+  if (isPotential) {
+    return [
+      "Jika ingin kami siapkan waktu terbaik, ketik *JADWAL*.",
+      "Jika unit terasa berisiko, kirim *share lokasi* ya."
+    ].join("\n");
+  }
+  return "Ketik *JADWAL* untuk booking, atau kirim *share lokasi* bila unit tidak aman.";
+}
+
+// ---------- LEAD SCORING ----------
 function detectPremium(body) {
   return /land cruiser|alphard|vellfire|lexus|bmw|mercedes|benz|audi|porsche|range rover|land rover|prado|lc200|lc300/i.test(body);
 }
@@ -203,6 +278,7 @@ function detectCantDrive(body) {
 function detectPriceOnly(body) {
   return /berapa|biaya|harga|kisaran|range|murah|diskon|nego|budget/i.test(body);
 }
+
 function leadScore({ body, hasLocation, isTowingCmd, isJadwalCmd }) {
   let score = 0;
   if (detectCantDrive(body)) score += 5;
@@ -210,23 +286,24 @@ function leadScore({ body, hasLocation, isTowingCmd, isJadwalCmd }) {
   if (isTowingCmd) score += 5;
   if (detectPremium(body)) score += 3;
   if (isJadwalCmd) score += 4;
-  if (detectPriceOnly(body) && body.length < 35) score -= 2;
+  if (detectPriceOnly(body) && String(body || "").length < 35) score -= 2;
   if (score < 0) score = 0;
   if (score > 10) score = 10;
   return score;
 }
+
 function leadTag(score) {
   if (score >= 8) return "🔴 PRIORITY";
   if (score >= 5) return "🟡 POTENTIAL";
   return "🔵 NORMAL";
 }
 
-// -------- TICKET MODEL (1 customer = 1 active ticket) --------
+// ---------- TICKET MODEL ----------
 function genTicketId() {
-  // short unique: T-xxxxx
   const n = Math.floor(10000 + Math.random() * 89999);
   return `T-${n}`;
 }
+
 function getOrCreateTicket(db, customerId, from) {
   const cust = db.customers[customerId];
   const currentTicketId = cust?.activeTicketId;
@@ -235,7 +312,6 @@ function getOrCreateTicket(db, customerId, from) {
     return db.tickets[currentTicketId];
   }
 
-  // create new ticket
   let tid = genTicketId();
   while (db.tickets[tid]) tid = genTicketId();
 
@@ -243,6 +319,7 @@ function getOrCreateTicket(db, customerId, from) {
     id: tid,
     customerId,
     from,
+    msisdn: cleanMsisdn(from),
     waMe: toWaMe(from),
     status: "OPEN", // OPEN | CLAIMED | CLOSED
     createdAt: nowISO(),
@@ -262,23 +339,25 @@ function getOrCreateTicket(db, customerId, from) {
   db.customers[customerId].activeTicketId = tid;
   return ticket;
 }
+
 function updateTicket(ticket, patch = {}) {
   Object.assign(ticket, patch);
   ticket.updatedAt = nowISO();
 }
 
-// -------- ADMIN NOTIFY --------
+// ---------- ADMIN NOTIFY ----------
 async function notifyAdmin({ title, ticket, reason, body, locationUrl }) {
   const msg = [
     title,
     `Ticket: ${ticket.id} (${ticket.tag} | Score ${ticket.score}/10)`,
     `Customer: ${ticket.from}`,
+    `Nomor: ${ticket.msisdn}`,
     `Chat customer: ${ticket.waMe}`,
     reason ? `Alasan: ${reason}` : null,
     locationUrl ? `Lokasi: ${locationUrl}` : null,
     body ? `Pesan: ${body}` : null,
     ``,
-    `Admin commands: LIST | STATS | CLAIM ${ticket.id} | CLOSE ${ticket.id} | NOTE ${ticket.id} ...`,
+    `Commands: HELP | LIST | STATS | CLAIM ${ticket.id} | CLOSE ${ticket.id} | NOTE ${ticket.id} ...`,
   ].filter(Boolean).join("\n");
 
   try {
@@ -292,24 +371,26 @@ async function notifyAdmin({ title, ticket, reason, body, locationUrl }) {
   }
 }
 
-// -------- CUSTOMER RESPONSES --------
+// ---------- CUSTOMER REPLIES ----------
 function replyTwiML(res, text) {
   res.type("text/xml");
   return res.send(`<Response><Message>${escapeXml(text)}</Message></Response>`);
 }
 
-function towingInstruction(locationUrl) {
+function towingInstruction(ticket) {
   const parts = [];
   parts.push(`Jika unit tidak bisa berjalan / terasa berisiko, sebaiknya jangan dipaksakan untuk mencegah kerusakan melebar.`);
-  parts.push(`Ketik *TOWING* lalu kirim *share lokasi* Anda — kami bantu arahkan evakuasi ke workshop.`);
-  if (locationUrl) parts.push(`📍 Lokasi terdeteksi: ${locationUrl}`);
+  parts.push(`Silakan kirim *share lokasi* Anda — setelah kami terima, admin langsung follow up dan arahkan proses evakuasi.`);
+  if (ticket?.locationUrl) parts.push(`📍 Lokasi terdeteksi: ${ticket.locationUrl}`);
+  parts.push(ctaLine(ticket));
+  parts.push(scarcityLine(ticket));
   parts.push(confidenceLine());
   parts.push("");
   parts.push(businessSignature());
   return parts.join("\n");
 }
 
-function jadwalInstruction() {
+function jadwalInstruction(ticket) {
   return [
     `Siap, untuk *booking pemeriksaan*, mohon kirim data singkat:`,
     `1) Nama`,
@@ -317,52 +398,58 @@ function jadwalInstruction() {
     `3) Keluhan utama (contoh: "rpm tinggi", "jedug pindah gigi", "selip")`,
     `4) Rencana datang (hari & jam)`,
     ``,
+    ctaLine(ticket),
+    scarcityLine(ticket),
     confidenceLine(),
     ``,
     businessSignature(),
   ].join("\n");
 }
 
-function generalTemplate() {
+function generalTemplate(ticket) {
   return [
-    `Halo! Boleh info singkat ya:`,
+    `Halo! Kami siap bantu.`,
+    `Boleh info singkat ya:`,
     `1) Mobil & tahun`,
-    `2) Keluhan utama (contoh: rpm tinggi / jedug / selip / telat masuk gigi)`,
+    `2) Keluhan utama (rpm tinggi / jedug / selip / telat masuk gigi)`,
     `3) Muncul saat dingin atau saat panas/macet?`,
     ``,
-    `Jika unit tidak bisa berjalan / terasa berisiko, sebaiknya jangan dipaksakan.`,
-    `Ketik *TOWING* lalu kirim *share lokasi* bila perlu.`,
+    ctaLine(ticket),
+    scarcityLine(ticket),
     confidenceLine(),
     ``,
     businessSignature(),
   ].join("\n");
 }
 
-// -------- ADMIN COMMAND HANDLER --------
+// ---------- ADMIN COMMANDS ----------
 function adminHelp() {
   return [
     `✅ Admin Panel Hongz`,
     ``,
     `Commands:`,
-    `LIST                (list tiket OPEN/CLAIMED)`,
-    `STATS               (ringkasan)`,
-    `CLAIM T-12345       (ambil tiket)`,
-    `CLOSE T-12345       (tutup tiket)`,
-    `NOTE T-12345 isi... (catatan)`,
+    `HELP / MENU          (panduan)`,
+    `LIST                 (list tiket aktif)`,
+    `STATS                (ringkasan)`,
+    `CLAIM T-12345        (ambil tiket)`,
+    `CLOSE T-12345        (tutup tiket)`,
+    `NOTE T-12345 isi...  (catatan)`,
   ].join("\n");
 }
 
 function listTickets(db) {
   const all = Object.values(db.tickets || {});
-  const open = all.filter(t => t.status !== "CLOSED")
-    .sort((a,b) => (b.lastInboundAtMs||0) - (a.lastInboundAtMs||0))
-    .slice(0, 10);
+  const active = all
+    .filter(t => t.status !== "CLOSED")
+    .sort((a, b) => (b.lastInboundAtMs || 0) - (a.lastInboundAtMs || 0))
+    .slice(0, 12);
 
-  if (!open.length) return "Tidak ada tiket aktif saat ini.";
+  if (!active.length) return "Tidak ada tiket aktif saat ini.";
 
-  const lines = ["📋 Tiket Aktif (Top 10):"];
-  for (const t of open) {
-    lines.push(`${t.id} | ${t.tag} | ${t.status} | ${cleanMsisdn(t.from)} | ${t.type} | ${t.locationUrl ? "📍loc" : "-"} | ${t.lastBody?.slice(0, 28) || ""}`);
+  const lines = ["📋 Tiket Aktif (Top 12):"];
+  for (const t of active) {
+    const shortMsg = (t.lastBody || "").replace(/\s+/g, " ").slice(0, 28);
+    lines.push(`${t.id} | ${t.tag} | ${t.status} | ${t.msisdn} | ${t.type} | ${t.locationUrl ? "📍loc" : "-"} | ${shortMsg}`);
   }
   lines.push("");
   lines.push("Ketik: CLAIM T-xxxxx / CLOSE T-xxxxx / NOTE T-xxxxx ...");
@@ -375,7 +462,6 @@ function statsTickets(db) {
   const priority = active.filter(t => t.tag.includes("PRIORITY")).length;
   const potential = active.filter(t => t.tag.includes("POTENTIAL")).length;
   const normal = active.length - priority - potential;
-
   const towing = active.filter(t => t.type === "TOWING").length;
   const jadwal = active.filter(t => t.type === "JADWAL").length;
 
@@ -403,32 +489,26 @@ function handleAdminCommand(db, body) {
   if (t === "LIST") return listTickets(db);
   if (t === "STATS") return statsTickets(db);
 
-  // CLAIM T-xxxxx
   if (t.startsWith("CLAIM ")) {
     const id = t.split(/\s+/)[1];
     const ticket = findTicket(db, id);
     if (!ticket) return `Ticket ${id} tidak ditemukan.`;
     ticket.status = "CLAIMED";
     ticket.updatedAt = nowISO();
-    return `✅ ${ticket.id} di-CLAIM. Customer: ${ticket.from}\nwa.me: ${ticket.waMe}\nLokasi: ${ticket.locationUrl || "(belum ada)"}`;
+    return `✅ ${ticket.id} di-CLAIM.\nCustomer: ${ticket.from}\nNomor: ${ticket.msisdn}\nwa.me: ${ticket.waMe}\nLokasi: ${ticket.locationUrl || "(belum ada)"}`;
   }
 
-  // CLOSE T-xxxxx
   if (t.startsWith("CLOSE ")) {
     const id = t.split(/\s+/)[1];
     const ticket = findTicket(db, id);
     if (!ticket) return `Ticket ${id} tidak ditemukan.`;
     ticket.status = "CLOSED";
     ticket.updatedAt = nowISO();
-
-    // detach active ticket if matches
     const cust = db.customers?.[ticket.customerId];
     if (cust && cust.activeTicketId === ticket.id) cust.activeTicketId = "";
-
     return `✅ ${ticket.id} di-CLOSE.`;
   }
 
-  // NOTE T-xxxxx ...
   if (t.startsWith("NOTE ")) {
     const parts = body.split(" ");
     const id = (parts[1] || "").toUpperCase();
@@ -445,7 +525,7 @@ function handleAdminCommand(db, body) {
   return `Perintah tidak dikenal. Ketik HELP.`;
 }
 
-// -------- FOLLOW-UP CRON (2 tahap) --------
+// ---------- FOLLOW-UP (2 STAGES) ----------
 function isDueForFollowup(ticket) {
   if (String(FOLLOWUP_ENABLED).toLowerCase() !== "true") return false;
   if (!ticket || ticket.status === "CLOSED") return false;
@@ -464,8 +544,6 @@ function isDueForFollowup(ticket) {
   if (lastFu && (now - lastFu) < cooldownH * 3600 * 1000) return false;
 
   const ageH = (now - lastIn) / (3600 * 1000);
-
-  // due stage 1 or stage 2
   if (count === 0 && ageH >= stage1H) return true;
   if (count === 1 && ageH >= stage2H) return true;
 
@@ -473,19 +551,23 @@ function isDueForFollowup(ticket) {
 }
 
 function followupText(ticket) {
-  // 2 tahap, tone enterprise: calm authority, dorong action
-  const isPriority = ticket.tag.includes("PRIORITY");
-  const base = isPriority
-    ? "Kami follow-up ya. Untuk kasus seperti ini, penanganan cepat biasanya mencegah masalah melebar."
+  const tag = String(ticket.tag || "");
+  const isPriority = tag.includes("PRIORITY");
+
+  const opener = isPriority
+    ? "Kami follow-up ya. Untuk gejala seperti ini, penanganan cepat biasanya mencegah masalah melebar."
     : "Kami follow-up ya. Agar tidak berkembang, sebaiknya unit ditangani dalam waktu dekat.";
 
-  const action = ticket.type === "TOWING"
-    ? "Jika unit masih tidak aman untuk dijalankan, ketik *TOWING* lalu kirim *share lokasi*."
-    : "Jika Anda siap, ketik *JADWAL* untuk booking pemeriksaan.";
+  // soft closing boost (tanpa lebay)
+  const action =
+    ticket.type === "TOWING"
+      ? "Jika unit masih tidak aman untuk dijalankan, silakan kirim *share lokasi*—admin langsung follow up untuk evakuasi."
+      : "Jika Anda siap, ketik *JADWAL*—kami siapkan waktu terbaik untuk Anda.";
 
   return [
-    base,
+    opener,
     action,
+    scarcityLine(ticket),
     confidenceLine(),
     "",
     businessSignature(),
@@ -494,7 +576,7 @@ function followupText(ticket) {
   ].join("\n");
 }
 
-// -------- MAIN WEBHOOK HANDLER --------
+// ---------- MAIN WEBHOOK HANDLER ----------
 async function webhookHandler(req, res) {
   const db = loadDB();
 
@@ -505,14 +587,14 @@ async function webhookHandler(req, res) {
 
   dlog("IN", { from, to, body, hasLocation: !!location });
 
-  // If message is from ADMIN -> handle commands (admin-only)
+  // ADMIN path
   if (isAdmin(from)) {
     const reply = handleAdminCommand(db, body);
     saveDB(db);
     return replyTwiML(res, reply);
   }
 
-  // Basic customer identity
+  // customer identity
   const customerId = sha16(from);
   if (!db.customers[customerId]) {
     db.customers[customerId] = {
@@ -538,14 +620,11 @@ async function webhookHandler(req, res) {
     return replyTwiML(res, "Siap. Follow-up diaktifkan kembali. Silakan tulis keluhan Anda.");
   }
 
-  // Get/Create ticket
   const ticket = getOrCreateTicket(db, customerId, from);
 
-  // classify
   const cmdTowing = isCommand(body, "TOWING");
   const cmdJadwal = isCommand(body, "JADWAL");
   const cantDrive = detectCantDrive(body);
-  const premium = detectPremium(body);
   const hasLoc = !!location;
 
   const score = leadScore({
@@ -556,22 +635,18 @@ async function webhookHandler(req, res) {
   });
   const tag = leadTag(score);
 
-  // update ticket core
   updateTicket(ticket, {
     lastBody: body,
     lastInboundAtMs: nowMs(),
     score,
     tag,
     waMe: toWaMe(from),
+    msisdn: cleanMsisdn(from),
     type: cmdJadwal ? "JADWAL" : (cmdTowing || cantDrive || hasLoc ? "TOWING" : "GENERAL"),
   });
 
-  // attach location
-  if (location?.mapsUrl) {
-    ticket.locationUrl = location.mapsUrl;
-  }
+  if (location?.mapsUrl) ticket.locationUrl = location.mapsUrl;
 
-  // log event
   db.events.push({
     t: nowISO(),
     from,
@@ -584,8 +659,7 @@ async function webhookHandler(req, res) {
   });
   if (db.events.length > 5000) db.events = db.events.slice(-2000);
 
-  // -------- ACTION RULES --------
-  // (1) If location shared -> notify admin with wa.me link + location
+  // RULE 1: location received -> notify admin
   if (hasLoc) {
     await notifyAdmin({
       title: "📍 *LOCATION RECEIVED (AUTO)*",
@@ -601,7 +675,8 @@ async function webhookHandler(req, res) {
       "Baik, lokasi sudah kami terima ✅",
       "Admin akan follow up untuk langkah berikutnya (termasuk evakuasi/towing bila diperlukan).",
       "",
-      "Jika unit tidak aman untuk dijalankan / tidak bisa berjalan, sebaiknya jangan dipaksakan.",
+      ctaLine(ticket),
+      scarcityLine(ticket),
       confidenceLine(),
       "",
       businessSignature(),
@@ -610,7 +685,7 @@ async function webhookHandler(req, res) {
     return replyTwiML(res, reply);
   }
 
-  // (2) TOWING command OR can't drive -> notify admin, ask share location
+  // RULE 2: towing command or can't drive -> notify admin + ask location
   if (cmdTowing || cantDrive) {
     await notifyAdmin({
       title: "🚨 *PRIORITY TOWING (AUTO)*",
@@ -621,10 +696,10 @@ async function webhookHandler(req, res) {
     });
 
     saveDB(db);
-    return replyTwiML(res, towingInstruction(ticket.locationUrl || ""));
+    return replyTwiML(res, towingInstruction(ticket));
   }
 
-  // (3) JADWAL command -> notify admin too (Papa minta)
+  // RULE 3: jadwal -> notify admin + send booking template
   if (cmdJadwal) {
     await notifyAdmin({
       title: "📅 *BOOKING REQUEST (AUTO)*",
@@ -635,14 +710,15 @@ async function webhookHandler(req, res) {
     });
 
     saveDB(db);
-    return replyTwiML(res, jadwalInstruction());
+    return replyTwiML(res, jadwalInstruction(ticket));
   }
 
-  // (4) Address question -> ONLY maps link (anti ngawur)
+  // RULE 4: address question -> only MAPS_LINK (anti ngawur)
   if (/alamat|lokasi|maps|map|di mana|dimana/i.test(body)) {
     saveDB(db);
     const reply = [
       `Untuk lokasi, silakan buka: ${MAPS_LINK}`,
+      scarcityLine(ticket),
       confidenceLine(),
       "",
       businessSignature(),
@@ -650,12 +726,12 @@ async function webhookHandler(req, res) {
     return replyTwiML(res, reply);
   }
 
-  // (5) Default template (stable, tidak bisu)
+  // default
   saveDB(db);
-  return replyTwiML(res, generalTemplate());
+  return replyTwiML(res, generalTemplate(ticket));
 }
 
-// -------- DUAL ROUTES (A) --------
+// ---------- DUAL ROUTES ----------
 app.post(["/twilio/webhook", "/whatsapp/incoming"], (req, res) => {
   webhookHandler(req, res).catch((e) => {
     console.error("Webhook fatal:", e.message);
@@ -663,7 +739,7 @@ app.post(["/twilio/webhook", "/whatsapp/incoming"], (req, res) => {
   });
 });
 
-// -------- CRON FOLLOW-UP (C+) --------
+// ---------- CRON FOLLOW-UP ----------
 app.get("/cron/followup", async (req, res) => {
   try {
     const key = String(req.query.key || "");
@@ -680,9 +756,10 @@ app.get("/cron/followup", async (req, res) => {
 
       if (isDueForFollowup(t)) {
         const msg = followupText(t);
+
         await twilioClient.messages.create({
           from: TWILIO_WHATSAPP_FROM,
-          to: t.from, // customer "whatsapp:+62..."
+          to: t.from,
           body: msg,
         });
 
@@ -701,10 +778,10 @@ app.get("/cron/followup", async (req, res) => {
   }
 });
 
-// -------- HEALTH --------
+// ---------- HEALTH ----------
 app.get("/", (_req, res) => res.status(200).send("HONGZ AI SERVER — ENTERPRISE C+ — OK"));
 
-// -------- START --------
+// ---------- START ----------
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
   console.log("HONGZ AI SERVER — ENTERPRISE C+ — START");
