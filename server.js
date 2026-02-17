@@ -1,11 +1,10 @@
 /**
- * HONGZ AI SERVER — ENTERPRISE C+ (ONE FILE) — FULL REPLACE (Human AI + Soft Closing + CTA by stage)
- * ✅ Tujuan versi ini:
- * - Jawaban AI NATURAL (tidak kaku, tidak “nembak closing”)
- * - Closing baru muncul kalau sudah ada “peluang” (stage-based)
- * - Auto ticket + scoring + tag + admin notif (towing/location/jadwal)
- * - Admin commands: HELP, LIST, STATS, CLAIM, CLOSE, NOTE
- * - Follow-up mandiri via CRON (bisa AI) -> /cron/followup?key=CRON_KEY
+ * HONGZ AI SERVER — ENTERPRISE C+ (ONE FILE) — FULL FINAL (Human AI + Anti-Todong + Stage CTA)
+ * ✅ Fokus versi FINAL:
+ * - Jawaban AI natural (ngobrol manusia), tidak kaku, tidak “preman todong closing”
+ * - Closing/CTA muncul bertahap (stage-based), bukan dari awal
+ * - Tetap ada TOWING / JADWAL / lokasi / admin notif / tiket / follow-up CRON
+ * - Follow-up bisa AI (OpenAI) atau fallback human
  *
  * REQUIRED ENV:
  *   TWILIO_ACCOUNT_SID
@@ -15,10 +14,10 @@
  *
  * OPTIONAL (AI):
  *   OPENAI_API_KEY
- *   OPENAI_MODEL="gpt-4o-mini"
+ *   OPENAI_MODEL="gpt-4o-mini"          (boleh ganti)
  *   OPENAI_TIMEOUT_MS="9000"
  *
- * BRANDING (optional):
+ * BRANDING:
  *   BIZ_NAME, BIZ_ADDRESS, BIZ_HOURS, MAPS_LINK
  *   WHATSAPP_ADMIN, WHATSAPP_CS   (public https://wa.me/ links)
  *
@@ -32,13 +31,17 @@
  *
  * SCARCITY:
  *   SCARCITY_MODE="soft"  (soft|hard)
- *   SCARCITY_SLOTS="2"    (dipakai jika hard)
+ *   SCARCITY_SLOTS="2"
  *
  * STORAGE:
  *   DATA_DIR="/var/data"
  *
  * DEBUG:
  *   DEBUG="true"
+ *
+ * NOTE DEPENDENCY (package.json):
+ *   "express", "body-parser", "twilio", "openai"
+ *   Untuk OpenAI: pakai "openai": "^4.0.0"
  */
 
 const express = require("express");
@@ -48,8 +51,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-// OpenAI optional
-let OpenAI;
+// OpenAI (optional) — robust for v4
+let OpenAI = null;
 try { OpenAI = require("openai"); } catch (_) { OpenAI = null; }
 
 // ---------- ENV ----------
@@ -101,7 +104,6 @@ app.use(bodyParser.json());
 // ---------- STORAGE ----------
 function ensureDir(dir) { try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {} }
 ensureDir(DATA_DIR);
-
 const DB_FILE = path.join(DATA_DIR, "hongz_enterprise_db.json");
 
 function loadDB() {
@@ -129,9 +131,7 @@ function escapeXml(unsafe) {
     .replace(/'/g, "&apos;");
 }
 
-function normText(s) {
-  return String(s || "").replace(/\u200b/g, "").trim();
-}
+function normText(s) { return String(s || "").replace(/\u200b/g, "").trim(); }
 function upper(s) { return normText(s).toUpperCase(); }
 
 function isCommand(body, cmd) {
@@ -178,27 +178,24 @@ function extractLocation(reqBody) {
   return null;
 }
 
-// ---------- BRAND SIGNATURE ----------
-function businessSignature() {
+// ---------- BRAND SIGNATURE (lebih ringkas biar tidak kaku) ----------
+function signatureShort() {
   return [
-    `📍 ${BIZ_NAME}`,
-    `${BIZ_ADDRESS}`,
-    `🧭 ${MAPS_LINK}`,
+    `— ${BIZ_NAME}`,
+    `🧭 Maps: ${MAPS_LINK}`,
     `⏱ ${BIZ_HOURS}`,
-    ``,
-    `📲 WhatsApp Admin:`,
-    `${WHATSAPP_ADMIN}`,
-    ``,
-    `💬 WhatsApp CS:`,
-    `${WHATSAPP_CS}`,
+    `📲 Admin: ${WHATSAPP_ADMIN}`,
+    `💬 CS: ${WHATSAPP_CS}`,
+    `Ketik *JADWAL* (booking) / *TOWING* (darurat)`,
   ].join("\n");
 }
 
-function confidenceLine() {
+function confidenceLine(style = "neutral") {
+  if (style === "casual") return `✅ Tenang ya, kita bantu sampai jelas langkahnya 🙂`;
   return `✅ Tenang ya, kami bantu sampai jelas langkahnya.`;
 }
 
-// ---------- SCARCITY (soft/hard) ----------
+// ---------- SCARCITY (dipakai halus & hanya saat stage cukup) ----------
 function scarcityLine(ticket) {
   const mode = String(SCARCITY_MODE || "soft").toLowerCase();
   const slots = Number(SCARCITY_SLOTS || 2);
@@ -206,7 +203,7 @@ function scarcityLine(ticket) {
 
   if (mode === "hard") {
     const s = Number.isFinite(slots) ? slots : 2;
-    if (tag.includes("PRIORITY")) return `⏳ Slot diagnosa hari ini tinggal ${s} (kami bisa amankan lebih dulu kalau Anda siap).`;
+    if (tag.includes("PRIORITY")) return `⏳ Slot diagnosa hari ini tinggal ${s}. Kalau Anda siap, kami bisa amankan lebih dulu.`;
     return `⏳ Slot pemeriksaan hari ini tinggal ${s}.`;
   }
 
@@ -224,7 +221,6 @@ function detectCantDrive(body) {
 function detectPriceOnly(body) {
   return /berapa|biaya|harga|kisaran|range|murah|diskon|nego|budget/i.test(body);
 }
-
 function leadScore({ body, hasLocation, isTowingCmd, isJadwalCmd }) {
   let score = 0;
   if (detectCantDrive(body)) score += 5;
@@ -237,21 +233,21 @@ function leadScore({ body, hasLocation, isTowingCmd, isJadwalCmd }) {
   if (score > 10) score = 10;
   return score;
 }
-
 function leadTag(score) {
   if (score >= 8) return "🔴 PRIORITY";
   if (score >= 5) return "🟡 POTENTIAL";
   return "🔵 NORMAL";
 }
 
-// ---------- HUMAN STYLE DETECTION (A/B/C user preference) ----------
+// ---------- HUMAN STYLE DETECTION (C: natural + sedikit elegan) ----------
 function detectStyle(body) {
-  const t = String(body || "").toLowerCase();
-  const hasPakBu = /(pak|bu|bapak|ibu)/i.test(body);
-  const hasEmoji = /[😀-🙏]/.test(body);
-  const short = t.length <= 18;
-  const panic = /darurat|tolong|cepat|mogok|tidak bisa|gak bisa|ga bisa|stuck|bahaya/i.test(t);
-  const formal = /mohon|berkenan|apabila|dengan hormat|terima kasih/i.test(t) || hasPakBu;
+  const t = String(body || "");
+  const low = t.toLowerCase();
+
+  const panic = /darurat|tolong|cepat|mogok|tidak bisa|gak bisa|ga bisa|stuck|bahaya/i.test(low);
+  const formal = /mohon|berkenan|apabila|dengan hormat|terima kasih|pak|bu|bapak|ibu/i.test(low);
+  const hasEmoji = /[\u{1F300}-\u{1FAFF}]/u.test(t);
+  const short = low.length <= 18;
 
   if (panic) return "urgent";
   if (formal) return "formal";
@@ -259,17 +255,28 @@ function detectStyle(body) {
   return "neutral";
 }
 
+function composeTone(style) {
+  // C: natural + elegan ringan (tanpa campur bahasa berlebihan)
+  if (style === "urgent") return "tenang, sigap, menenangkan";
+  if (style === "formal") return "sopan, profesional, rapi";
+  if (style === "casual") return "ramah, santai, natural";
+  return "ramah-profesional, natural, enak dibaca";
+}
+
 // ---------- STAGE (anti “todong closing”) ----------
 function hasVehicleInfo(body) {
   const t = String(body || "").toLowerCase();
   const hasYear = /\b(19[8-9]\d|20[0-3]\d)\b/.test(t);
   const hasBrand = /toyota|honda|nissan|mitsubishi|suzuki|daihatsu|mazda|hyundai|kia|wuling|dfsk|bmw|mercedes|audi|lexus/i.test(t);
-  const hasModelCue = /innova|avanza|rush|fortuner|alp(h)ard|vellfire|x-trail|crv|hrv|pajero|xpander|ertiga|brio|jazz|civic|camry|yaris|lc200|lc300/i.test(t);
+  const hasModelCue = /innova|avanza|rush|fortuner|alphard|vellfire|x-trail|crv|hrv|pajero|xpander|ertiga|brio|jazz|civic|camry|yaris|carens/i.test(t);
   return hasYear || hasBrand || hasModelCue;
 }
 function hasSymptomInfo(body) {
   const t = String(body || "").toLowerCase();
-  return /rpm|selip|jedug|hentak|telat|ngelos|overheat|bau|getar|gigi|d|r|n|p|nyentak|delay|slip|noise|bunyi|bocor/i.test(t);
+  return /rpm|selip|jedug|hentak|telat|ngelos|overheat|bau|getar|gigi|d|r|n|p|nyentak|delay|slip|noise|bunyi|bocor|tidak bisa jalan/i.test(t);
+}
+function askedForSchedule(body) {
+  return /kapan bisa masuk|jadwal|booking|bisa hari|bisa jam|kapan bisa datang/i.test(String(body || "").toLowerCase());
 }
 
 // ---------- TICKET MODEL ----------
@@ -277,7 +284,6 @@ function genTicketId() {
   const n = Math.floor(10000 + Math.random() * 89999);
   return `T-${n}`;
 }
-
 function getOrCreateTicket(db, customerId, from) {
   const cust = db.customers[customerId];
   const currentTicketId = cust?.activeTicketId;
@@ -304,7 +310,7 @@ function getOrCreateTicket(db, customerId, from) {
     locationUrl: "",
     notes: [],
     type: "GENERAL", // GENERAL | TOWING | JADWAL
-    stage: 0, // 0=baru ngobrol, 1=mulai ada info, 2=siap diarahkan booking
+    stage: 0, // 0=baru ngobrol, 1=mulai ada info, 2=siap diarahkan
     followupCount: 0,
     lastFollowupAtMs: 0,
     lastInboundAtMs: nowMs(),
@@ -315,7 +321,6 @@ function getOrCreateTicket(db, customerId, from) {
   db.customers[customerId].activeTicketId = tid;
   return ticket;
 }
-
 function updateTicket(ticket, patch = {}) {
   Object.assign(ticket, patch);
   ticket.updatedAt = nowISO();
@@ -325,7 +330,7 @@ function updateTicket(ticket, patch = {}) {
 async function notifyAdmin({ title, ticket, reason, body, locationUrl }) {
   const msg = [
     title,
-    `Ticket: ${ticket.id} (${ticket.tag} | Score ${ticket.score}/10)`,
+    `Ticket: ${ticket.id} (${ticket.tag} | Score ${ticket.score}/10 | stage:${ticket.stage})`,
     `Customer: ${ticket.from}`,
     `Nomor: ${ticket.msisdn}`,
     `Chat customer: ${ticket.waMe}`,
@@ -353,34 +358,33 @@ function replyTwiML(res, text) {
   return res.send(`<Response><Message>${escapeXml(text)}</Message></Response>`);
 }
 
-function towingInstruction(ticket) {
+function towingInstruction(ticket, style) {
   const lines = [];
-  lines.push("Baik, untuk keamanan sebaiknya unit *jangan dipaksakan* dulu ya.");
-  lines.push("Silakan kirim *share lokasi* — begitu lokasi masuk, admin langsung follow up untuk arahkan evakuasi/towing.");
+  lines.push("Baik ya. Kalau unit *tidak bisa jalan* / terasa berisiko, sebaiknya *jangan dipaksakan* dulu.");
+  lines.push("Boleh kirim *share lokasi*? Setelah lokasi masuk, admin langsung follow up untuk arahkan evakuasi/towing.");
   if (ticket?.locationUrl) lines.push(`📍 Lokasi terdeteksi: ${ticket.locationUrl}`);
-  lines.push(confidenceLine());
+  lines.push(confidenceLine(style));
   lines.push("");
-  lines.push(businessSignature());
+  lines.push(signatureShort());
   return lines.join("\n");
 }
 
-function jadwalInstruction(ticket) {
-  // JADWAL selalu boleh direct
+function jadwalInstruction(ticket, style) {
   return [
-    `Siap, untuk *booking pemeriksaan*, mohon kirim data singkat:`,
+    `Siap, untuk *booking pemeriksaan*, boleh kirim data singkat ya:`,
     `1) Nama`,
     `2) Mobil & tahun`,
-    `3) Keluhan utama (contoh: "rpm tinggi", "jedug pindah gigi", "selip")`,
+    `3) Keluhan utama (contoh: rpm naik, jedug, telat masuk gigi)`,
     `4) Rencana datang (hari & jam)`,
     ``,
-    scarcityLine(ticket),
-    confidenceLine(),
+    (ticket.stage >= 2 ? scarcityLine(ticket) : ""),
+    confidenceLine(style),
     ``,
-    businessSignature(),
-  ].join("\n");
+    signatureShort(),
+  ].filter(Boolean).join("\n");
 }
 
-// ---------- AI (Human, not "todong") ----------
+// ---------- AI HELPERS ----------
 function withTimeout(promise, ms, label = "TIMEOUT") {
   return Promise.race([
     promise,
@@ -388,69 +392,80 @@ function withTimeout(promise, ms, label = "TIMEOUT") {
   ]);
 }
 
-function mustMapsOnly(text) {
+// ✅ FIX PENTING: jangan salah potong kata “jalan”
+function mustMapsOnly(text, userText) {
   const low = String(text || "").toLowerCase();
-  // jika AI kebablasan bikin alamat, paksa balik ke maps link saja
-  if (low.includes("jl") || low.includes("jalan") || low.includes("no.") || low.includes("nomor") || low.includes("alamat")) {
-    return `Untuk lokasi, silakan buka: ${MAPS_LINK}`;
-  }
+  const u = String(userText || "").toLowerCase();
+
+  const userAskingLocation = /(alamat|lokasi|maps|map|di mana|dimana)/i.test(u);
+  const looksLikeAddress = /(jl\.|jalan\s+\w|no\.|nomor\s+\d|kecamatan|kelurahan|kode pos)/i.test(low);
+
+  // hanya paksa maps kalau (user memang tanya lokasi) DAN jawaban terlihat seperti alamat
+  if (userAskingLocation && looksLikeAddress) return `Untuk lokasi, silakan buka: ${MAPS_LINK}`;
+
+  // atau kalau AI “ngarang alamat” (alamat detail) walau user tidak tanya
+  const aiClearlyInventing = /(jl\.|jalan\s+\w).*(no\.|nomor\s+\d)/i.test(low);
+  if (aiClearlyInventing) return `Untuk lokasi, silakan buka: ${MAPS_LINK}`;
+
   return text;
 }
 
-function composeTone(style) {
-  if (style === "urgent") return "tenang, sigap, menenangkan (bukan panik)";
-  if (style === "formal") return "sopan, profesional, rapi (seperti CS kantor)";
-  if (style === "casual") return "ramah, santai, natural (seperti ngobrol manusia)";
-  return "ramah-profesional, natural";
+function closingPolicy(stage, ticketType, userText) {
+  // stage 0: jangan ajak booking kecuali user memang tanya jadwal
+  // stage 1: ajak halus (1 kalimat) jika user membuka peluang
+  // stage 2: ajak lebih jelas tapi tetap soft
+  if (ticketType === "TOWING") return "fokus towing + minta share lokasi. jangan bahas booking dulu.";
+  if (askedForSchedule(userText)) return "user sudah tanya jadwal; boleh jawab jadwal/ajak JADWAL secara sopan.";
+  if (stage <= 0) return "JANGAN mendorong booking. fokus tanya 1–2 pertanyaan triase.";
+  if (stage === 1) return "boleh sisipkan ajakan booking 1 kalimat (soft), tidak memaksa.";
+  return "boleh ajak booking lebih jelas tapi tetap soft (tanpa ancaman/menakut-nakuti).";
 }
 
-function closingPolicy(stage, ticketType) {
-  // stage 0: jangan arahkan booking kecuali customer minta
-  // stage 1: boleh ajak pelan
-  // stage 2: boleh ajak lebih jelas (soft)
-  if (ticketType === "TOWING") return "fokus towing + minta lokasi, jangan bahas booking dulu.";
-  if (stage <= 0) return "JANGAN mendorong booking. Fokus tanya 1–2 pertanyaan yang pas untuk memahami kondisi.";
-  if (stage === 1) return "Boleh sisipkan ajakan booking secara halus (1 kalimat), tidak memaksa.";
-  return "Boleh ajak booking lebih jelas tapi tetap sopan dan tidak memaksa (soft closing).";
-}
-
-function buildSystemPrompt({ style, stage, ticket, hasLoc, cantDrive, priceOnly }) {
+function buildSystemPrompt({ style, stage, ticket, userText, cantDrive, priceOnly }) {
   const tone = composeTone(style);
-  const policy = closingPolicy(stage, ticket.type);
+  const policy = closingPolicy(stage, ticket.type, userText);
 
   return `
-Anda adalah Customer Service WhatsApp ${BIZ_NAME} (Medan) untuk konsultasi transmisi matic.
-Gaya bahasa: ${tone}. Jawaban harus terasa seperti manusia, bukan template kaku.
+Anda adalah Customer Service WhatsApp ${BIZ_NAME} (Medan), spesialis transmisi matic.
+Gaya bahasa: ${tone}. Harus terasa seperti manusia, bukan template kaku.
 
-ATURAN KERAS (WAJIB):
-- DILARANG mengarang alamat. Jika ditanya lokasi/alamat, jawab HANYA dengan link ini: ${MAPS_LINK}
+ATURAN WAJIB:
+- Jangan mengarang alamat. Jika ditanya lokasi/alamat, jawab HANYA dengan link: ${MAPS_LINK}
 - Maksimal 2 pertanyaan dalam satu balasan.
-- Jangan "todong closing" kecuali sudah ada konteks (lihat policy).
-- Jika kondisi tidak bisa jalan / berisiko: sarankan jangan dipaksakan + minta share lokasi (TOWING flow).
-- Jika fokus tanya harga: jangan kasih angka fix. Jelaskan diagnosa dulu secara profesional.
+- Jangan “todong closing”. Ikuti policy.
+- Jika tidak bisa jalan/berisiko: sarankan jangan dipaksakan + minta share lokasi.
+- Jika user tanya harga: jangan beri angka fix. Jelaskan bahwa perlu diagnosa dulu (beri penjelasan singkat).
+- Bahasa Indonesia, natural, enak dibaca. Tidak perlu panjang.
 
 KONTEKS:
 - TicketTag: ${ticket.tag}
 - TicketType: ${ticket.type}
 - Stage: ${stage} (0=baru ngobrol, 1=mulai ada info, 2=siap diarahkan)
-- hasLocation: ${hasLoc}
 - cantDrive: ${cantDrive}
 - priceOnly: ${priceOnly}
 
-POLICY CLOSING:
+POLICY:
 - ${policy}
 
-FORMAT OUTPUT:
-- 1 paragraf analisa singkat yang menenangkan (tidak menakut-nakuti).
-- Lalu jika perlu: 1–2 pertanyaan triase.
-- Jangan menambahkan bagian alamat. Jangan menambahkan signature panjang (server akan menambahkan).
+OUTPUT:
+- 1 paragraf analisa singkat yang menenangkan (tanpa menakut-nakuti)
+- lalu 1–2 pertanyaan triase (jika perlu)
+- jangan tulis signature panjang (server yang tambah).
 `.trim();
 }
 
-async function aiReply({ userText, ticket, style, stage, hasLoc, cantDrive, priceOnly }) {
+async function aiReply({ userText, ticket, style, stage, cantDrive, priceOnly }) {
   if (!OPENAI_API_KEY || !OpenAI) return null;
 
-  const client = new OpenAI({ apiKey: OPENAI_API_KEY });
+  // OpenAI v4: constructor
+  let client;
+  try {
+    client = new OpenAI({ apiKey: OPENAI_API_KEY });
+  } catch (e) {
+    console.error("OpenAI init failed:", e.message);
+    return null;
+  }
+
   const timeoutMs = Number(OPENAI_TIMEOUT_MS) || 9000;
 
   try {
@@ -459,7 +474,7 @@ async function aiReply({ userText, ticket, style, stage, hasLoc, cantDrive, pric
         model: OPENAI_MODEL,
         temperature: 0.35,
         messages: [
-          { role: "system", content: buildSystemPrompt({ style, stage, ticket, hasLoc, cantDrive, priceOnly }) },
+          { role: "system", content: buildSystemPrompt({ style, stage, ticket, userText, cantDrive, priceOnly }) },
           { role: "user", content: userText },
         ],
       }),
@@ -470,7 +485,7 @@ async function aiReply({ userText, ticket, style, stage, hasLoc, cantDrive, pric
     let text = resp?.choices?.[0]?.message?.content?.trim();
     if (!text) return null;
 
-    text = mustMapsOnly(text);
+    text = mustMapsOnly(text, userText);
 
     // batasi panjang biar WhatsApp enak
     if (text.length > 900) text = text.slice(0, 900).trim() + "…";
@@ -564,6 +579,8 @@ function handleAdminCommand(db, body) {
     if (!ticket) return `Ticket ${id} tidak ditemukan.`;
     ticket.status = "CLOSED";
     ticket.updatedAt = nowISO();
+    const cust = db.customers?.[ticket.customerId];
+    if (cust && cust.activeTicketId === ticket.id) cust.activeTicketId = "";
     return `✅ ${ticket.id} di-CLOSE.`;
   }
 
@@ -609,51 +626,53 @@ function isDueForFollowup(ticket) {
 }
 
 function followupFallback(ticket) {
-  // Soft follow-up: bukan “todong”
+  // Soft & human (bukan todong)
   const line1 = ticket.tag.includes("PRIORITY")
-    ? "Kami follow-up sebentar ya, supaya kasusnya tidak melebar."
-    : "Kami follow-up ya—kalau masih sempat, boleh lanjutkan infonya sedikit.";
+    ? "Kami follow-up sebentar ya, supaya kondisinya tidak melebar."
+    : "Kami follow-up ya—kalau masih sempat, boleh lanjut sedikit infonya.";
 
   const ask = ticket.stage <= 0
-    ? "Boleh info mobil & tahunnya, plus gejala singkat yang paling terasa?"
-    : "Kalau Anda siap, kita bisa lanjutkan langkah paling aman untuk unitnya.";
+    ? "Boleh info mobil & tahunnya, plus gejala yang paling terasa?"
+    : "Gejalanya sekarang masih sama atau ada perubahan?";
 
   const action = ticket.type === "TOWING"
-    ? "Kalau unit tidak aman dijalankan, silakan kirim *share lokasi*—admin akan follow up."
-    : "Kalau sudah oke, ketik *JADWAL* untuk booking (nanti admin bantu pilih waktu).";
+    ? "Kalau unit tidak aman dijalankan, kirim *share lokasi* ya—admin akan bantu arahkan."
+    : (ticket.stage >= 2 ? "Kalau Anda sudah siap, ketik *JADWAL*—nanti admin bantu pilih waktu yang pas." : "Kalau sudah oke, kita lanjutkan langkah paling aman untuk unitnya ya.");
 
   return [
     line1,
     ask,
     action,
-    scarcityLine(ticket),
-    confidenceLine(),
+    (ticket.stage >= 2 && ticket.type !== "TOWING" ? scarcityLine(ticket) : ""),
+    confidenceLine("neutral"),
     "",
-    businessSignature(),
+    signatureShort(),
     "",
     "Jika tidak ingin follow-up lagi, ketik STOP.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 async function followupAI(ticket) {
   if (!OPENAI_API_KEY || !OpenAI) return null;
 
-  const client = new OpenAI({ apiKey: OPENAI_API_KEY });
+  let client;
+  try { client = new OpenAI({ apiKey: OPENAI_API_KEY }); }
+  catch (e) { console.error("OpenAI init failed:", e.message); return null; }
+
   const timeoutMs = Number(OPENAI_TIMEOUT_MS) || 9000;
 
-  const style = "neutral";
   const sys = `
-Anda membuat pesan follow-up WhatsApp untuk bengkel transmisi matic ${BIZ_NAME}.
+Anda menulis pesan follow-up WhatsApp untuk bengkel transmisi matic ${BIZ_NAME}.
 Syarat:
-- Nada ramah, manusiawi, tidak maksa.
+- Nada ramah, manusiawi, tidak memaksa.
 - Maks 2 kalimat inti + 1 pertanyaan ringan (opsional).
 - Jangan menulis alamat. Jika perlu lokasi, hanya gunakan: ${MAPS_LINK}
-- Jika ticket.type TOWING: minta share lokasi.
-- Jika GENERAL/JADWAL: ajak lanjut info dulu, booking hanya soft.
-- Jangan menyebut "ticket" atau sistem internal.
+- Jika type=TOWING: minta share lokasi.
+- Jika GENERAL: ajak lanjut info dulu; booking hanya soft jika stage>=2.
+- Jangan menyebut sistem internal.
 `.trim();
 
-  const user = `Konteks: tag=${ticket.tag}, type=${ticket.type}, stage=${ticket.stage}, lastMsg="${(ticket.lastBody||"").slice(0,150)}"`;
+  const user = `Konteks: tag=${ticket.tag}, type=${ticket.type}, stage=${ticket.stage}, lastMsg="${(ticket.lastBody || "").slice(0, 150)}"`;
 
   try {
     const resp = await withTimeout(
@@ -672,7 +691,7 @@ Syarat:
     let text = resp?.choices?.[0]?.message?.content?.trim();
     if (!text) return null;
 
-    text = mustMapsOnly(text);
+    text = mustMapsOnly(text, "");
     if (text.length > 500) text = text.slice(0, 500).trim() + "…";
     return text;
   } catch (e) {
@@ -745,7 +764,10 @@ async function webhookHandler(req, res) {
   let stage = Number(ticket.stage || 0);
   const vInfo = hasVehicleInfo(body);
   const sInfo = hasSymptomInfo(body);
+  const scheduleAsk = askedForSchedule(body);
+
   if (cmdJadwal) stage = Math.max(stage, 2);
+  else if (scheduleAsk) stage = Math.max(stage, 2); // user sudah minta jadwal, boleh masuk stage 2
   else if (vInfo || sInfo) stage = Math.max(stage, 1);
   if (vInfo && sInfo) stage = Math.max(stage, 2);
 
@@ -776,6 +798,8 @@ async function webhookHandler(req, res) {
   });
   if (db.events.length > 5000) db.events = db.events.slice(-2000);
 
+  const style = detectStyle(body);
+
   // RULE 1: location received -> notify admin
   if (hasLoc) {
     await notifyAdmin({
@@ -792,9 +816,9 @@ async function webhookHandler(req, res) {
       "Baik, lokasi sudah kami terima ✅",
       "Admin akan follow up untuk langkah berikutnya (termasuk evakuasi/towing bila diperlukan).",
       "",
-      confidenceLine(),
+      confidenceLine(style),
       "",
-      businessSignature(),
+      signatureShort(),
     ].join("\n");
 
     return replyTwiML(res, reply);
@@ -811,10 +835,10 @@ async function webhookHandler(req, res) {
     });
 
     saveDB(db);
-    return replyTwiML(res, towingInstruction(ticket));
+    return replyTwiML(res, towingInstruction(ticket, style));
   }
 
-  // RULE 3: jadwal -> notify admin + send template
+  // RULE 3: jadwal -> notify admin + template
   if (cmdJadwal) {
     await notifyAdmin({
       title: "📅 *BOOKING REQUEST (AUTO)*",
@@ -825,7 +849,7 @@ async function webhookHandler(req, res) {
     });
 
     saveDB(db);
-    return replyTwiML(res, jadwalInstruction(ticket));
+    return replyTwiML(res, jadwalInstruction(ticket, style));
   }
 
   // RULE 4: address question -> only MAPS_LINK
@@ -833,40 +857,49 @@ async function webhookHandler(req, res) {
     saveDB(db);
     const reply = [
       `Untuk lokasi, silakan buka: ${MAPS_LINK}`,
-      confidenceLine(),
+      confidenceLine(style),
       "",
-      businessSignature(),
+      signatureShort(),
     ].join("\n");
     return replyTwiML(res, reply);
   }
 
-  // DEFAULT: Human AI reply (no todong)
-  const style = detectStyle(body);
-  const ai = await aiReply({ userText: body, ticket, style, stage, hasLoc, cantDrive, priceOnly });
+  // DEFAULT: Human AI reply (anti todong)
+  const ai = await aiReply({ userText: body, ticket, style, stage, cantDrive, priceOnly });
 
   let replyText;
   if (ai) {
-    // signature + (scarcity hanya kalau stage>=1 supaya tidak preman)
     const extra = [];
-    if (stage >= 1 && ticket.type !== "TOWING") extra.push(scarcityLine(ticket));
-    extra.push(confidenceLine());
+
+    // Scarcity hanya muncul kalau stage >=2 dan bukan towing, biar tidak “preman”
+    if (stage >= 2 && type !== "TOWING") extra.push(scarcityLine(ticket));
+
+    extra.push(confidenceLine(style));
     extra.push("");
-    extra.push(businessSignature());
+    extra.push(signatureShort());
+
     replyText = [ai, ...extra].join("\n");
   } else {
-    // fallback: tetap natural, tidak nembak booking
-    const ask = stage <= 0
-      ? "Boleh info mobil & tahunnya, plus gejala yang paling terasa (contoh: rpm naik, jedug, telat masuk gigi)?"
-      : "Gejalanya biasanya muncul saat dingin atau saat panas/macet?";
+    // fallback: natural, 1–2 pertanyaan, tidak nembak booking
+    const triageQ =
+      stage <= 0
+        ? "Boleh info mobil & tahunnya, plus gejala yang paling terasa (contoh: rpm naik, jedug, telat masuk gigi)?"
+        : "Gejalanya lebih sering muncul saat dingin atau saat panas/macet?";
+
+    const softAsk =
+      stage >= 2
+        ? "Kalau Anda berkenan, kita bisa jadwalkan pemeriksaan supaya diagnosanya lebih presisi (ketik *JADWAL*)."
+        : "";
 
     replyText = [
-      "Baik, kami bantu cek arah masalahnya ya.",
-      ask,
-      (cantDrive ? "Kalau unit tidak aman dijalankan, ketik *TOWING* lalu kirim *share lokasi*." : ""),
-      (stage >= 1 ? scarcityLine(ticket) : ""),
-      confidenceLine(),
+      "Baik, kita bantu cek arah masalahnya ya.",
+      triageQ,
+      (priceOnly ? "Untuk biaya biasanya tergantung hasil diagnosa—biar akurat, kita pastikan penyebabnya dulu ya." : ""),
+      softAsk,
+      (stage >= 2 && type !== "TOWING" ? scarcityLine(ticket) : ""),
+      confidenceLine(style),
       "",
-      businessSignature(),
+      signatureShort(),
     ].filter(Boolean).join("\n");
   }
 
@@ -879,7 +912,7 @@ async function webhookHandler(req, res) {
 app.post(["/twilio/webhook", "/whatsapp/incoming"], (req, res) => {
   webhookHandler(req, res).catch((e) => {
     console.error("Webhook fatal:", e.message);
-    return replyTwiML(res, "Maaf, sistem sedang padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
+    return replyTwiML(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
   });
 });
 
@@ -925,12 +958,12 @@ app.get("/cron/followup", async (req, res) => {
 });
 
 // ---------- HEALTH ----------
-app.get("/", (_req, res) => res.status(200).send("HONGZ AI SERVER — ENTERPRISE C+ (Human AI) — OK"));
+app.get("/", (_req, res) => res.status(200).send("HONGZ AI SERVER — ENTERPRISE C+ (FINAL Human AI) — OK"));
 
 // ---------- START ----------
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
-  console.log("HONGZ AI SERVER — ENTERPRISE C+ (Human AI) — START");
+  console.log("HONGZ AI SERVER — ENTERPRISE C+ (FINAL Human AI) — START");
   console.log("Listening on port:", port);
   console.log("Webhook routes: /twilio/webhook and /whatsapp/incoming");
 });
