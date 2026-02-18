@@ -136,7 +136,7 @@ const {
   SCARCITY_SLOTS = "2",
 
   // Storage / cron / debug
-  DATA_DIR = "/var/data",
+  DATA_DIR = process.env.DATA_DIR ||"/tmp",
   CRON_KEY = "",
   DEBUG = "false",
 } = process.env;
