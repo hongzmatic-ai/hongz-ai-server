@@ -49,13 +49,13 @@ function detectJebakan(text) {
     /berapa|kisaran|range|budget|murah|diskon|harga doang/i.test(t) &&
     t.length < 35;
 
-  const 3M =
+  const tigaM =
     /murah|meriah|mantap|paling murah|bisa kurang|nego/i.test(t);
 
   const meremehkan =
     /yakin bisa|bengkel lain bilang|masa sih|ah cuma gitu/i.test(t);
 
-  return tukangTanya || 3M || meremehkan;
+  return tukangTanya || tigaM || meremehkan;
 }
 
 // ===============================
