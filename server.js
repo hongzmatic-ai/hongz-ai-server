@@ -1,26 +1,35 @@
 /**
- * HONGZ AI SERVER — ENTERPRISE C+ (ONE FILE) — FULL FINAL (Human AI + Anti-Todong + Stage CTA)
- * ✅ Versi FINAL + Battle Mode:
+ * HONGZ AI SERVER — ENTERPRISE C+ (ONE FILE) — FULL FINAL + RADAR MONITOR
+ * ✅ Versi FINAL + Battle Mode + Radar Monitor:
  * - Human AI natural (ngobrol manusia), tidak kaku, tidak “preman todong closing”
- * - Closing/CTA muncul bertahap (stage-based) + buying-signal detector
- * - MODE DIAM anti misnok (pengorek info) + MODE DOMINAN elegan kalau diremehkan
- * - TOWING footer tanpa MAPS_LINK + TOWING style #3 (Kepala Bengkel Premium)
+ * - Closing/CTA bertahap (stage-based) + buying-signal detector
+ * - MODE DIAM anti misnok (pengorek harga) + MODE DOMINAN elegan kalau diremehkan
+ * - TOWING footer tanpa MAPS_LINK + default towing style #3 (Kepala Bengkel Premium)
  * - Ticket + scoring + tag + admin notif + follow-up CRON
+ * - RADAR MONITOR: notif real-time semua chat masuk ke nomor monitor (private)
  *
  * REQUIRED ENV:
  *   TWILIO_ACCOUNT_SID
  *   TWILIO_AUTH_TOKEN
  *   TWILIO_WHATSAPP_FROM      e.g. "whatsapp:+6285xxxx"
- *   ADMIN_WHATSAPP_TO         e.g. "whatsapp:+62813xxxx"  (Papa/admin)
+ *   ADMIN_WHATSAPP_TO         e.g. "whatsapp:+62813xxxx"  (Papa/admin eksekusi)
  *
  * OPTIONAL (AI):
  *   OPENAI_API_KEY
- *   OPENAI_MODEL="gpt-4o-mini"          (boleh ganti)
+ *   OPENAI_MODEL="gpt-4o-mini"
  *   OPENAI_TIMEOUT_MS="9000"
+ *
+ * RADAR MONITOR (NEW):
+ *   MONITOR_WHATSAPP_TO="whatsapp:+6281260638100"
+ *   MONITOR_LEVEL="ALL"          (ALL | POTENTIAL | PRIORITY)
+ *   MONITOR_COOLDOWN_SEC="20"    (anti spam notif)
  *
  * BRANDING:
  *   BIZ_NAME, BIZ_ADDRESS, BIZ_HOURS, MAPS_LINK
  *   WHATSAPP_ADMIN, WHATSAPP_CS   (public https://wa.me/ links)
+ *
+ * TOWING STYLE:
+ *   TOWING_STYLE="3"  (1 ideal | 2 super singkat | 3 kepala bengkel premium)
  *
  * FOLLOWUP:
  *   FOLLOWUP_ENABLED="true"
@@ -67,6 +76,11 @@ const {
   TWILIO_AUTH_TOKEN,
   TWILIO_WHATSAPP_FROM,
   ADMIN_WHATSAPP_TO,
+
+  // RADAR MONITOR
+  MONITOR_WHATSAPP_TO = "",
+  MONITOR_LEVEL = "ALL", // ALL | POTENTIAL | PRIORITY
+  MONITOR_COOLDOWN_SEC = "20",
 
   OPENAI_API_KEY,
   OPENAI_MODEL = "gpt-4o-mini",
@@ -166,6 +180,12 @@ function isAdmin(from) {
   return a && f && a === f;
 }
 
+function isMonitor(from) {
+  const m = normalizeFrom(MONITOR_WHATSAPP_TO).toLowerCase();
+  const f = normalizeFrom(from).toLowerCase();
+  return !!(m && f && m === f);
+}
+
 // ---------- LOCATION PARSER ----------
 function extractLocation(reqBody) {
   const lat = reqBody.Latitude || reqBody.latitude;
@@ -221,7 +241,7 @@ function signatureTowing(style = "3") {
   return [
     `— ${BIZ_NAME} (Precision Transmission Center)`,
     `📲 Admin prioritas: ${WHATSAPP_ADMIN}`,
-    `⚡ Jika darurat, klik Admin untuk *voice call* (lebih cepat koordinasi).`,
+    `⚡ Darurat? Klik Admin untuk *voice call* (lebih cepat koordinasi).`,
   ].join("\n");
 }
 
@@ -301,18 +321,16 @@ function composeTone(style) {
 function detectSuspicious(body) {
   const t = String(body || "").toLowerCase();
   const shortPrice = /berapa|harga|biaya/i.test(t) && t.length < 25;
-  const testingTone = /bisa gak|yakin bisa|berapa lama sih|emang bisa|kok mahal/i.test(t);
+  const testingTone = /bisa gak|yakin bisa|berapa lama sih|emang bisa|kok mahal|coba jelasin/i.test(t);
   return !!(shortPrice || testingTone);
 }
-
 function detectChallengingTone(body) {
   const t = String(body || "").toLowerCase();
-  return /yakin bisa|pernah ngerjain|ah masa|bisa gak sih|cuma gitu doang|bengkel lain bilang/i.test(t);
+  return /yakin bisa|pernah ngerjain|ah masa|bisa gak sih|cuma gitu doang|bengkel lain bilang|jangan bohong/i.test(t);
 }
-
 function detectBuyingSignal(body) {
   const t = String(body || "").toLowerCase();
-  return /kapan bisa|besok bisa|hari ini bisa|bisa masuk|siap datang|jam berapa|alamat dimana|lokasi dimana|jam buka/i.test(t);
+  return /kapan bisa|besok bisa|hari ini bisa|bisa masuk|siap datang|jam berapa|jam buka|alamat dimana|lokasi dimana/i.test(t);
 }
 
 // ---------- STAGE ----------
@@ -367,6 +385,9 @@ function getOrCreateTicket(db, customerId, from) {
     lastFollowupAtMs: 0,
     lastInboundAtMs: nowMs(),
     lastBotAtMs: 0,
+
+    // Radar anti-spam
+    lastRadarAtMs: 0,
   };
 
   db.tickets[tid] = ticket;
@@ -404,28 +425,68 @@ async function notifyAdmin({ title, ticket, reason, body, locationUrl }) {
   }
 }
 
+// ---------- RADAR MONITOR NOTIFY ----------
+function monitorAllowedByLevel(score) {
+  const lvl = String(MONITOR_LEVEL || "ALL").toUpperCase();
+  if (lvl === "PRIORITY") return score >= 8;
+  if (lvl === "POTENTIAL") return score >= 5;
+  return true; // ALL
+}
+
+async function notifyMonitor({ title, ticket, body }) {
+  const to = normalizeFrom(MONITOR_WHATSAPP_TO);
+  if (!to) return;
+
+  // jangan kirim kalau monitor = admin (biar tidak dobel)
+  if (normalizeFrom(ADMIN_WHATSAPP_TO).toLowerCase() === to.toLowerCase()) return;
+
+  // anti-spam (cooldown per ticket)
+  const cd = Math.max(0, Number(MONITOR_COOLDOWN_SEC || 20)) * 1000;
+  const now = nowMs();
+  if (cd > 0 && ticket.lastRadarAtMs && (now - ticket.lastRadarAtMs) < cd) return;
+  ticket.lastRadarAtMs = now;
+
+  const shortMsg = (body || "").replace(/\s+/g, " ").slice(0, 140);
+
+  const msg = [
+    title,
+    `Ticket: ${ticket.id} | ${ticket.tag} | score:${ticket.score}/10 | stage:${ticket.stage} | ${ticket.type}`,
+    `From: ${ticket.msisdn}`,
+    `wa.me: ${ticket.waMe}`,
+    ticket.locationUrl ? `Lokasi: ${ticket.locationUrl}` : null,
+    `Msg: ${shortMsg}${(body || "").length > 140 ? "…" : ""}`,
+  ].filter(Boolean).join("\n");
+
+  try {
+    await twilioClient.messages.create({
+      from: TWILIO_WHATSAPP_FROM,
+      to,
+      body: msg,
+    });
+  } catch (e) {
+    console.error("Monitor notify failed:", e.message);
+  }
+}
+
 // ---------- CUSTOMER REPLIES ----------
 function replyTwiML(res, text) {
   res.type("text/xml");
   return res.send(`<Response><Message>${escapeXml(text)}</Message></Response>`);
 }
 
-// ✅ TOWING style #3 (kepala bengkel premium) + footer tanpa MAPS
-
-  // ===============================
-// TOWING STYLE (Adaptive Premium Logic)
 // ===============================
-
-function towingInstruction(ticket, style) {
+// TOWING (Adaptive Premium Logic) — DEFAULT STYLE = TOWING_STYLE (Papa pilih 3)
+// Footer towing: tanpa MAPS_LINK
+// ===============================
+function towingInstruction(ticket, humanStyle) {
+  const style = String(TOWING_STYLE || "3");
   const lines = [];
 
   const premiumDiagnosis =
     "Biasanya kondisi seperti ini berkaitan dengan tekanan oli transmisi drop, clutch aus, valve body bermasalah, atau torque converter.";
-
   const suggestionTow =
     "Jika unit sudah tidak bisa bergerak sama sekali, lebih aman dievakuasi (towing) daripada dipaksakan karena bisa menambah kerusakan.";
 
-  // ===== STYLE 1 – IDEAL (Seimbang & Natural)
   if (style === "1") {
     lines.push("Baik Bang, kalau unit sudah *tidak bisa jalan*, jangan dipaksakan dulu ya.");
     lines.push(premiumDiagnosis);
@@ -433,23 +494,18 @@ function towingInstruction(ticket, style) {
     lines.push(suggestionTow);
     lines.push("");
     lines.push("Kirim *share lokasi* ya — admin langsung bantu arahkan langkah paling aman.");
-    lines.push("⚡ Jika perlu cepat, bisa langsung *voice call Admin*.");
+    lines.push("⚡ Jika perlu cepat, bisa langsung *voice call Admin*:");
     lines.push(WHATSAPP_ADMIN);
-  }
-
-  // ===== STYLE 2 – SUPER SINGKAT (Cepat & Tegas)
-  else if (style === "2") {
+  } else if (style === "2") {
     lines.push("Kalau unit sudah tidak bisa jalan, jangan dipaksakan.");
     lines.push("Kemungkinan masalah tekanan oli / valve body / torque converter.");
     lines.push("Lebih aman evakuasi daripada tambah rusak.");
     lines.push("");
-    lines.push("Kirim share lokasi — admin koordinasi towing aman.");
-    lines.push("⚡ Perlu cepat? Voice call Admin.");
+    lines.push("Kirim *share lokasi* — admin koordinasi towing aman.");
+    lines.push("⚡ Perlu cepat? Voice call Admin:");
     lines.push(WHATSAPP_ADMIN);
-  }
-
-  // ===== STYLE 3 – KEPALA BENGKEL PREMIUM (Powerful & Professional)
-  else {
+  } else {
+    // style 3 — kepala bengkel premium
     lines.push("Baik Bang.");
     lines.push("Kalau unit sudah *tidak bisa jalan*, jangan dipaksakan dulu — bisa memperparah kerusakan internal.");
     lines.push("");
@@ -464,38 +520,37 @@ function towingInstruction(ticket, style) {
   }
 
   lines.push("");
-  lines.push("✅ Tenang ya, kami bantu sampai jelas langkahnya.");
-
+  lines.push(confidenceLine(humanStyle));
+  lines.push("");
+  lines.push(signatureTowing(style)); // ✅ towing footer tanpa maps
   return lines.join("\n");
 }
 
-
 // ===============================
-// JADWAL / BOOKING STYLE
+// JADWAL / BOOKING
 // ===============================
-
-function jadwalInstruction(ticket, style) {
+function jadwalInstruction(ticket, humanStyle) {
   const lines = [];
-
   lines.push("Siap, untuk booking pemeriksaan bisa kirim data singkat ya:");
   lines.push("");
   lines.push("1️⃣ Nama");
   lines.push("2️⃣ Mobil & tahun");
-  lines.push("3️⃣ Keluhan utama (contoh: rpm naik jedug / telat masuk gigi)");
+  lines.push("3️⃣ Keluhan utama (contoh: rpm naik / jedug / telat masuk gigi)");
   lines.push("4️⃣ Rencana datang (hari & jam)");
   lines.push("");
   lines.push("Setelah data masuk, admin konfirmasi slot & estimasi waktu pengecekan.");
-
   lines.push("");
   lines.push("⚡ Jika butuh respons cepat, bisa langsung voice call Admin:");
   lines.push(WHATSAPP_ADMIN);
-
   lines.push("");
   lines.push("Kami bantu arahkan supaya datang tidak sia-sia.");
-
+  lines.push("");
+  lines.push(confidenceLine(humanStyle));
+  lines.push("");
+  lines.push(signatureShort());
   return lines.join("\n");
 }
-  
+
 // ---------- AI HELPERS ----------
 function withTimeout(promise, ms, label = "TIMEOUT") {
   return Promise.race([
@@ -818,6 +873,12 @@ async function webhookHandler(req, res) {
     return replyTwiML(res, reply);
   }
 
+  // monitor should not trigger bot logic (avoid loops)
+  if (isMonitor(from)) {
+    saveDB(db);
+    return replyTwiML(res, "✅ Monitor aktif.");
+  }
+
   // customer identity
   const customerId = sha16(from);
   if (!db.customers[customerId]) {
@@ -835,11 +896,28 @@ async function webhookHandler(req, res) {
   // STOP/START follow-up
   if (upper(body) === "STOP" || upper(body) === "UNSUBSCRIBE") {
     db.customers[customerId].optOut = true;
+
+    // Radar monitor tetap dapat notif (optional) — biar Papa tahu ada opt-out
+    const ticketTmp = getOrCreateTicket(db, customerId, from);
+    updateTicket(ticketTmp, { lastBody: body, lastInboundAtMs: nowMs() });
+
+    if (MONITOR_WHATSAPP_TO) {
+      await notifyMonitor({ title: "🛰️ RADAR IN (STOP)", ticket: ticketTmp, body });
+    }
+
     saveDB(db);
     return replyTwiML(res, "Baik. Follow-up dinonaktifkan. Jika ingin aktif lagi, ketik START.");
   }
   if (upper(body) === "START" || upper(body) === "SUBSCRIBE") {
     db.customers[customerId].optOut = false;
+
+    const ticketTmp = getOrCreateTicket(db, customerId, from);
+    updateTicket(ticketTmp, { lastBody: body, lastInboundAtMs: nowMs() });
+
+    if (MONITOR_WHATSAPP_TO) {
+      await notifyMonitor({ title: "🛰️ RADAR IN (START)", ticket: ticketTmp, body });
+    }
+
     saveDB(db);
     return replyTwiML(res, "Siap. Follow-up diaktifkan kembali. Silakan tulis keluhan Anda.");
   }
@@ -903,6 +981,11 @@ async function webhookHandler(req, res) {
   if (db.events.length > 5000) db.events = db.events.slice(-2000);
 
   const style = detectStyle(body);
+
+  // ✅ RADAR: notif setiap chat masuk (atau sesuai level)
+  if (MONITOR_WHATSAPP_TO && monitorAllowedByLevel(score)) {
+    await notifyMonitor({ title: "🛰️ RADAR IN", ticket, body });
+  }
 
   // RULE 1: location received -> notify admin
   if (hasLoc) {
@@ -1015,7 +1098,7 @@ async function webhookHandler(req, res) {
 
     replyText = [ai, ...extra].join("\n");
   } else {
-    // fallback: ringkas + tajam, tidak cerewet
+    // fallback: ringkas + tajam
     const triageQ =
       stage <= 0
         ? "Boleh info mobil & tahunnya, plus gejala yang paling terasa (rpm naik / jedug / telat masuk gigi)?"
@@ -1093,12 +1176,12 @@ app.get("/cron/followup", async (req, res) => {
 });
 
 // ---------- HEALTH ----------
-app.get("/", (_req, res) => res.status(200).send("HONGZ AI SERVER — ENTERPRISE C+ (FULL FINAL) — OK"));
+app.get("/", (_req, res) => res.status(200).send("HONGZ AI SERVER — ENTERPRISE C+ (FULL FINAL + RADAR) — OK"));
 
 // ---------- START ----------
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
-  console.log("HONGZ AI SERVER — ENTERPRISE C+ (FULL FINAL) — START");
+  console.log("HONGZ AI SERVER — ENTERPRISE C+ (FULL FINAL + RADAR) — START");
   console.log("Listening on port:", port);
   console.log("Webhook routes: /twilio/webhook and /whatsapp/incoming");
 });
