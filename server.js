@@ -412,40 +412,30 @@ function replyTwiML(res, text) {
 
 // ✅ TOWING style #3 (kepala bengkel premium) + footer tanpa MAPS
 function towingInstruction(ticket, style) {
-  const towingStyle = String(TOWING_STYLE || "3");
+  
+  const premiumDiagnosis = 
+    "Biasanya kondisi seperti ini berkaitan dengan tekanan oli transmisi drop, clutch aus, valve body bermasalah, atau torque converter.";
 
-  if (towingStyle === "2") {
-    return [
-      "Jangan dipaksakan ya.",
-      "Kirim *share lokasi* — admin langsung koordinasi evakuasi/towing.",
-      (ticket?.locationUrl ? `📍 Lokasi: ${ticket.locationUrl}` : ""),
-      confidenceLine(style),
-      "",
-      signatureTowing("2"),
-    ].filter(Boolean).join("\n");
-  }
+  const lines = [];
 
-  if (towingStyle === "1") {
-    return [
-      "Baik, kalau unit tidak aman dijalankan sebaiknya *jangan dipaksakan* dulu.",
-      "Boleh kirim *share lokasi*? Setelah lokasi masuk, admin langsung follow up untuk arahkan evakuasi/towing.",
-      (ticket?.locationUrl ? `📍 Lokasi: ${ticket.locationUrl}` : ""),
-      confidenceLine(style),
-      "",
-      signatureTowing("1"),
-    ].filter(Boolean).join("\n");
-  }
+  lines.push("Baik Bang, kalau unit sudah *tidak bisa jalan*, jangan dipaksakan dulu ya—biar tidak tambah rusak.");
 
-  // style 3: tegas elegan, tidak cerewet
-  return [
-    "Oke. Kalau gejalanya sudah *tidak aman*, jangan dipaksakan jalan dulu ya.",
-    "Kirim *share lokasi* sekarang — admin prioritas langsung koordinasi evakuasi/towing.",
-    (ticket?.locationUrl ? `📍 Lokasi: ${ticket.locationUrl}` : ""),
-    "Kalau perlu cepat, klik Admin untuk *voice call* (lebih cepat koordinasi).",
-    confidenceLine(style),
-    "",
-    signatureTowing("3"),
-  ].filter(Boolean).join("\n");
+  lines.push(premiumDiagnosis);
+
+  lines.push("Untuk pastikan arah kerusakan, unit perlu dicek langsung oleh teknisi.");
+
+  lines.push("Kirim *share lokasi* sekarang — admin langsung prioritas koordinasi evakuasi/towing yang aman.");
+
+  lines.push("");
+
+  lines.push("⚡ Jika perlu cepat, langsung *voice call Admin*:");
+  lines.push(WHATSAPP_ADMIN);
+
+  lines.push("");
+
+  lines.push(confidenceLine(style));
+
+  return lines.join("\n");
 }
 
 function jadwalInstruction(ticket, style) {
