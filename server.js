@@ -1026,7 +1026,34 @@ async function webhookHandler(req, res) {
     type,
     stage,
   });
+// ---------- AUTO CLAIM ----------
+const {
+  AUTO_CLAIM_ENABLED = "false",
+  AUTO_CLAIM_MIN_SCORE = "5",
+  AUTO_CLAIM_TYPES = "TOWING,JADWAL", // or ALL
+} = process.env;
 
+function autoClaimAllowed(ticket) {
+  const on = String(AUTO_CLAIM_ENABLED).toLowerCase() === "true";
+  if (!on) return false;
+
+  const minScore = Number(AUTO_CLAIM_MIN_SCORE || 5);
+  const types = String(AUTO_CLAIM_TYPES || "").toUpperCase().split(",").map(s => s.trim()).filter(Boolean);
+
+  const typeOk = types.includes("ALL") || types.includes(String(ticket.type || "").toUpperCase());
+  const scoreOk = Number(ticket.score || 0) >= minScore;
+
+  // jangan auto-claim kalau sudah closed / sudah claimed
+  if (ticket.status === "CLOSED" || ticket.status === "CLAIMED") return false;
+
+  return typeOk && scoreOk;
+}
+
+if (autoClaimAllowed(ticket)) {
+  ticket.status = "CLAIMED";
+  ticket.claimedBy = ADMIN_WHATSAPP_TO;
+  ticket.claimedAt = nowISO();
+}
   if (location?.mapsUrl) ticket.locationUrl = location.mapsUrl;
 
   db.events.push({
