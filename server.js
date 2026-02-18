@@ -1025,8 +1025,10 @@ async function webhookHandler(req, res) {
     msisdn: cleanMsisdn(from),
     type,
     stage,
-  });
-// ---------- AUTO CLAIM ----------
+  }); 
+ 
+  // ---------- AUTO CLAIM ----------
+  
 const {
   AUTO_CLAIM_ENABLED = "false",
   AUTO_CLAIM_MIN_SCORE = "5",
