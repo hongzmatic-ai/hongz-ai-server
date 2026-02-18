@@ -411,48 +411,91 @@ function replyTwiML(res, text) {
 }
 
 // ✅ TOWING style #3 (kepala bengkel premium) + footer tanpa MAPS
-function towingInstruction(ticket, style) {
-  
-  const premiumDiagnosis = 
-    "Biasanya kondisi seperti ini berkaitan dengan tekanan oli transmisi drop, clutch aus, valve body bermasalah, atau torque converter.";
 
+  // ===============================
+// TOWING STYLE (Adaptive Premium Logic)
+// ===============================
+
+function towingInstruction(ticket, style) {
   const lines = [];
 
-  lines.push("Baik Bang, kalau unit sudah *tidak bisa jalan*, jangan dipaksakan dulu ya—biar tidak tambah rusak.");
+  const premiumDiagnosis =
+    "Biasanya kondisi seperti ini berkaitan dengan tekanan oli transmisi drop, clutch aus, valve body bermasalah, atau torque converter.";
 
-  lines.push(premiumDiagnosis);
+  const suggestionTow =
+    "Jika unit sudah tidak bisa bergerak sama sekali, lebih aman dievakuasi (towing) daripada dipaksakan karena bisa menambah kerusakan.";
 
-  lines.push("Untuk pastikan arah kerusakan, unit perlu dicek langsung oleh teknisi.");
+  // ===== STYLE 1 – IDEAL (Seimbang & Natural)
+  if (style === "1") {
+    lines.push("Baik Bang, kalau unit sudah *tidak bisa jalan*, jangan dipaksakan dulu ya.");
+    lines.push(premiumDiagnosis);
+    lines.push("Untuk memastikan arah kerusakan, unit perlu dicek langsung oleh teknisi.");
+    lines.push(suggestionTow);
+    lines.push("");
+    lines.push("Kirim *share lokasi* ya — admin langsung bantu arahkan langkah paling aman.");
+    lines.push("⚡ Jika perlu cepat, bisa langsung *voice call Admin*.");
+    lines.push(WHATSAPP_ADMIN);
+  }
 
-  lines.push("Kirim *share lokasi* sekarang — admin langsung prioritas koordinasi evakuasi/towing yang aman.");
+  // ===== STYLE 2 – SUPER SINGKAT (Cepat & Tegas)
+  else if (style === "2") {
+    lines.push("Kalau unit sudah tidak bisa jalan, jangan dipaksakan.");
+    lines.push("Kemungkinan masalah tekanan oli / valve body / torque converter.");
+    lines.push("Lebih aman evakuasi daripada tambah rusak.");
+    lines.push("");
+    lines.push("Kirim share lokasi — admin koordinasi towing aman.");
+    lines.push("⚡ Perlu cepat? Voice call Admin.");
+    lines.push(WHATSAPP_ADMIN);
+  }
+
+  // ===== STYLE 3 – KEPALA BENGKEL PREMIUM (Powerful & Professional)
+  else {
+    lines.push("Baik Bang.");
+    lines.push("Kalau unit sudah *tidak bisa jalan*, jangan dipaksakan dulu — bisa memperparah kerusakan internal.");
+    lines.push("");
+    lines.push(premiumDiagnosis);
+    lines.push("");
+    lines.push("Unit seperti ini perlu pemeriksaan tekanan oli & sistem transmisi secara langsung.");
+    lines.push(suggestionTow);
+    lines.push("");
+    lines.push("Silakan kirim *share lokasi sekarang* — kami prioritaskan koordinasi evakuasi yang aman.");
+    lines.push("⚡ Untuk respons tercepat, langsung *voice call Admin*:");
+    lines.push(WHATSAPP_ADMIN);
+  }
 
   lines.push("");
-
-  lines.push("⚡ Jika perlu cepat, langsung *voice call Admin*:");
-  lines.push(WHATSAPP_ADMIN);
-
-  lines.push("");
-
-  lines.push(confidenceLine(style));
+  lines.push("✅ Tenang ya, kami bantu sampai jelas langkahnya.");
 
   return lines.join("\n");
 }
 
-function jadwalInstruction(ticket, style) {
-  return [
-    `Siap, untuk *booking pemeriksaan*, boleh kirim data singkat ya:`,
-    `1) Nama`,
-    `2) Mobil & tahun`,
-    `3) Keluhan utama (contoh: rpm naik, jedug, telat masuk gigi)`,
-    `4) Rencana datang (hari & jam)`,
-    ``,
-    (ticket.stage >= 2 ? scarcityLine(ticket) : ""),
-    confidenceLine(style),
-    ``,
-    signatureShort(),
-  ].filter(Boolean).join("\n");
-}
 
+// ===============================
+// JADWAL / BOOKING STYLE
+// ===============================
+
+function jadwalInstruction(ticket, style) {
+  const lines = [];
+
+  lines.push("Siap, untuk booking pemeriksaan bisa kirim data singkat ya:");
+  lines.push("");
+  lines.push("1️⃣ Nama");
+  lines.push("2️⃣ Mobil & tahun");
+  lines.push("3️⃣ Keluhan utama (contoh: rpm naik jedug / telat masuk gigi)");
+  lines.push("4️⃣ Rencana datang (hari & jam)");
+  lines.push("");
+  lines.push("Setelah data masuk, admin konfirmasi slot & estimasi waktu pengecekan.");
+
+  lines.push("");
+  lines.push("⚡ Jika butuh respons cepat, bisa langsung voice call Admin:");
+  lines.push(WHATSAPP_ADMIN);
+
+  lines.push("");
+  lines.push("Kami bantu arahkan supaya datang tidak sia-sia.");
+
+  return lines.join("\n");
+}
+  
 // ---------- AI HELPERS ----------
 function withTimeout(promise, ms, label = "TIMEOUT") {
   return Promise.race([
