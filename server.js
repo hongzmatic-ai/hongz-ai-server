@@ -1,22 +1,22 @@
 /**
- * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — FINAL
- * ✅ Fokus Bengkel Hongz (bukan towing bisnis utama, tapi towing tetap ada untuk darurat)
+ * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — FINAL (PATCH: ADMIN STABIL FIX)
+ * ✅ Fokus Bengkel Hongz (towing hanya darurat)
  *
- * FITUR UTAMA:
- * - Hybrid AI C+ (Primary model + fallback model) -> paling cerdas & stabil
+ * FITUR:
+ * - Hybrid AI C+ (PRIMARY -> FALLBACK) paling cerdas & stabil
  * - Human AI natural (mekanik senior), tidak kaku, tidak “preman todong closing”
  * - Closing/CTA bertahap (stage-based) + buying-signal detector
  * - MODE DIAM+ / LOCK MODE: Anti jebakan harga 3T + 3M (2-strike)
  * - MODE DOMINAN elegan kalau diremehkan
  * - Ticket + scoring + tag + admin notif + follow-up CRON
  * - RADAR MONITOR: notif real-time semua chat masuk ke nomor monitor (private)
- * - ADMIN STABIL: notif keyword-based + cooldown (admin tidak “diam”)
+ * - ADMIN STABIL (PATCH): notif tidak mudah miss (score/urgent/jadwal/towing/lokasi/keyword)
  *
  * REQUIRED ENV:
  *   TWILIO_ACCOUNT_SID
  *   TWILIO_AUTH_TOKEN
  *   TWILIO_WHATSAPP_FROM      e.g. "whatsapp:+14155238886" (Twilio Sandbox) atau WABA resmi Twilio
- *   ADMIN_WHATSAPP_TO         e.g. "whatsapp:+6281375430728"
+ *   ADMIN_WHATSAPP_TO         e.g. "whatsapp:+6281375430728"  <-- WAJIB format Twilio (bukan wa.me)
  *
  * OPTIONAL (AI):
  *   OPENAI_API_KEY
@@ -35,7 +35,7 @@
  *   ADMIN_NOTIFY_COOLDOWN_SEC="60"
  *   ADMIN_NOTIFY_KEYWORDS="..."   (kalau kosong -> pakai default)
  *
- * ANTI JEBEH (3T+3M):
+ * ANTI 3T+3M:
  *   ANTI_JEBEH_ENABLED="true"
  *   ANTI_JEBEH_STRICT="true"
  *   ANTI_JEBEH_STRIKES_LOCK="2"
@@ -146,6 +146,11 @@ function dlog(...args) {
   if (IS_DEBUG) console.log("[HONGZ]", ...args);
 }
 
+function envBool(v, def = false) {
+  if (v === undefined || v === null || v === "") return def;
+  return String(v).toLowerCase() === "true";
+}
+
 if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !ADMIN_WHATSAPP_TO) {
   console.error("❌ Missing ENV: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, ADMIN_WHATSAPP_TO");
 }
@@ -187,6 +192,11 @@ function escapeXml(unsafe) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+}
+
+function replyTwiML(res, text) {
+  res.type("text/xml");
+  return res.send(`<Response><Message>${escapeXml(text)}</Message></Response>`);
 }
 
 function normText(s) { return String(s || "").replace(/\u200b/g, "").trim(); }
@@ -398,14 +408,9 @@ function detect3T3M(body) {
   return { murah, meriah, mantap, tanya2, tes2, tawar2, hit };
 }
 
-function envBool(v, def = false) {
-  if (v === undefined || v === null || v === "") return def;
-  return String(v).toLowerCase() === "true";
-}
-
 // ---------- ADMIN KEYWORDS ----------
 const DEFAULT_ADMIN_KEYWORDS =
-  "tidak bisa jalan,gak bisa jalan,ga bisa jalan,mogok,tidak bisa hidup,gak bisa hidup,ga bisa hidup,stuck,macet total,selip,rpm naik tapi tidak jalan,masuk d tidak jalan,masuk r tidak jalan,towing,evakuasi,dorong,jadwal,booking,bisa masuk,hari ini bisa,besok bisa,jam berapa,kapan bisa,alamat,lokasi,maps,tarik,delay,jedug,hentak,overheat,scan,diagnosa";
+  "tidak bisa jalan,gak bisa jalan,ga bisa jalan,mogok,macet,stuck,selip,rpm naik tapi tidak jalan,masuk d tidak jalan,masuk r tidak jalan,tidak bisa hidup,gak bisa hidup,ga bisa hidup,towing,evakuasi,dorong,tarik,angkut,jadwal,booking,bisa masuk,hari ini bisa,besok bisa,jam berapa,kapan bisa,alamat,lokasi,maps,delay,jedug,hentak,overheat,scan,diagnosa";
 
 function parseKeywords(csv) {
   return String(csv || "")
@@ -479,17 +484,17 @@ function updateTicket(ticket, patch = {}) {
   ticket.updatedAt = nowISO();
 }
 
-// ---------- ADMIN NOTIFY ----------
+// ---------- ADMIN / RADAR NOTIFY ----------
 async function notifyAdmin({ title, ticket, reason, body, locationUrl }) {
   const msg = [
     title,
-    `Ticket: ${ticket.id} (${ticket.tag} | Score ${ticket.score}/10 | stage:${ticket.stage})`,
+    `Ticket: ${ticket.id} (${ticket.tag} | Score ${ticket.score}/10 | stage:${ticket.stage} | ${ticket.type})`,
     `Customer: ${ticket.from}`,
     `Nomor: ${ticket.msisdn}`,
-    `Chat customer: ${ticket.waMe}`,
+    `wa.me: ${ticket.waMe}`,
     reason ? `Alasan: ${reason}` : null,
     locationUrl ? `Lokasi: ${locationUrl}` : null,
-    body ? `Pesan: ${body}` : null,
+    body ? `Pesan: ${String(body).slice(0, 500)}` : null,
     ``,
     `Commands: HELP | LIST | STATS | CLAIM ${ticket.id} | CLOSE ${ticket.id} | NOTE ${ticket.id} ...`,
   ].filter(Boolean).join("\n");
@@ -505,13 +510,13 @@ async function notifyAdmin({ title, ticket, reason, body, locationUrl }) {
   }
 }
 
-// ---------- RADAR MONITOR ----------
 function monitorAllowedByLevel(score) {
   const lvl = String(MONITOR_LEVEL || "ALL").toUpperCase();
   if (lvl === "PRIORITY") return score >= 8;
   if (lvl === "POTENTIAL") return score >= 5;
   return true; // ALL
 }
+
 async function notifyMonitor({ title, ticket, body }) {
   const to = normalizeFrom(MONITOR_WHATSAPP_TO);
   if (!to) return;
@@ -545,12 +550,6 @@ async function notifyMonitor({ title, ticket, body }) {
   } catch (e) {
     console.error("Monitor notify failed:", e.message);
   }
-}
-
-// ---------- CUSTOMER REPLIES ----------
-function replyTwiML(res, text) {
-  res.type("text/xml");
-  return res.send(`<Response><Message>${escapeXml(text)}</Message></Response>`);
 }
 
 // ===============================
@@ -607,7 +606,7 @@ function towingInstruction(ticket, humanStyle) {
 // ===============================
 // JADWAL / BOOKING
 // ===============================
-function jadwalInstruction(ticket, humanStyle) {
+function jadwalInstruction(_ticket, humanStyle) {
   const lines = [];
   lines.push("Siap, untuk booking pemeriksaan bisa kirim data singkat ya:");
   lines.push("");
@@ -1049,7 +1048,7 @@ async function webhookHandler(req, res) {
     await notifyMonitor({ title: "🛰️ RADAR IN", ticket, body });
   }
 
-  // ✅ ADMIN STABIL: keyword-based notify + cooldown + min score
+  // ✅ ADMIN STABIL (PATCH): jangan gampang miss
   const adminNotifyOn = String(ADMIN_NOTIFY_ENABLED).toLowerCase() === "true";
   if (adminNotifyOn) {
     const hit = matchAdminKeyword(body);
@@ -1057,36 +1056,34 @@ async function webhookHandler(req, res) {
     const cdMs = Math.max(0, Number(ADMIN_NOTIFY_COOLDOWN_SEC || 60)) * 1000;
     const now = nowMs();
     const cooldownOk = !ticket.lastAdminNotifyAtMs || (now - ticket.lastAdminNotifyAtMs) >= cdMs;
-    const scoreOk = Number.isFinite(score) ? score >= minScore : true;
 
     // jangan kirim kalau admin=monitor
     const adminEqMon =
       normalizeFrom(ADMIN_WHATSAPP_TO).toLowerCase() === normalizeFrom(MONITOR_WHATSAPP_TO).toLowerCase();
 
-    if (!adminEqMon && hit && scoreOk && cooldownOk) {
+    const shouldNotifyAdmin =
+      (score >= minScore) ||
+      !!hit ||
+      cantDrive ||
+      cmdTowing ||
+      cmdJadwal ||
+      !!ticket.locationUrl;
+
+    if (!adminEqMon && shouldNotifyAdmin && cooldownOk) {
       ticket.lastAdminNotifyAtMs = now;
       await notifyAdmin({
-        title: "📣 *ADMIN ALERT (KEYWORD)*",
+        title: "📣 *ADMIN ALERT*",
         ticket,
-        reason: `Keyword hit: "${hit}"`,
+        reason: hit ? `Keyword hit: "${hit}"` : (cantDrive ? "Cant drive / urgent" : `Score >= ${minScore}`),
         body,
         locationUrl: ticket.locationUrl || "",
       });
     }
   }
 
-  // RULE 1: location received -> notify admin (pasti)
+  // RULE 1: location received -> reply cepat
   if (hasLoc) {
-    await notifyAdmin({
-      title: "📍 *LOCATION RECEIVED (AUTO)*",
-      ticket,
-      reason: "Customer shared location",
-      body,
-      locationUrl: ticket.locationUrl,
-    });
-
     saveDB(db);
-
     const reply = [
       "Baik, lokasi sudah kami terima ✅",
       "Admin akan follow up untuk langkah berikutnya (termasuk evakuasi/towing bila diperlukan).",
@@ -1095,34 +1092,17 @@ async function webhookHandler(req, res) {
       "",
       signatureTowing(TOWING_STYLE),
     ].join("\n");
-
     return replyTwiML(res, reply);
   }
 
-  // RULE 2: towing / can't drive -> notify admin + ask location (pasti)
+  // RULE 2: towing / can't drive
   if (cmdTowing || cantDrive) {
-    await notifyAdmin({
-      title: "🚨 *PRIORITY TOWING (AUTO)*",
-      ticket,
-      reason: cmdTowing ? "Customer typed TOWING" : "Customer mentions can't drive / risk",
-      body,
-      locationUrl: ticket.locationUrl || "",
-    });
-
     saveDB(db);
     return replyTwiML(res, towingInstruction(ticket, style));
   }
 
-  // RULE 3: jadwal -> notify admin + template (pasti)
+  // RULE 3: jadwal
   if (cmdJadwal) {
-    await notifyAdmin({
-      title: "📅 *BOOKING REQUEST (AUTO)*",
-      ticket,
-      reason: "Customer typed JADWAL",
-      body,
-      locationUrl: ticket.locationUrl || "",
-    });
-
     saveDB(db);
     return replyTwiML(res, jadwalInstruction(ticket, style));
   }
@@ -1156,7 +1136,7 @@ async function webhookHandler(req, res) {
     buyingSignal ||
     hasLoc;
 
-  // reset lock kalau sudah mulai serius (buying signal / info masuk)
+  // reset lock kalau sudah mulai serius
   if (hasMinInfo) {
     ticket.priceStrike = 0;
     ticket.lockMode = false;
@@ -1169,30 +1149,29 @@ async function webhookHandler(req, res) {
 
     saveDB(db);
 
-    // strict: lebih tegas, ringkas
-    const reply = ticket.lockMode
-      ? [
-          "Untuk harga yang akurat, kami tidak bisa tebak-tebakan tanpa diagnosa.",
-          "Mohon kirim *Mobil + Tahun + Gejala utama* (1 kalimat saja).",
-          "Kalau sudah siap datang, ketik *JADWAL* biar kami amankan slot cek.",
-          "",
-          confidenceLine(style),
-          "",
-          signatureShort(),
-        ].join("\n")
-      : [
-          "Untuk biaya, tergantung hasil diagnosa karena penyebab tiap unit bisa berbeda.",
-          "Boleh info *mobil & tahun* + *gejala utama* (contoh: rpm naik / jedug / telat masuk gigi)?",
-          "",
-          confidenceLine(style),
-          "",
-          signatureShort(),
-        ].join("\n");
+    const replySoft = [
+      "Untuk biaya, tergantung hasil diagnosa karena penyebab tiap unit bisa berbeda.",
+      "Boleh info *mobil & tahun* + *gejala utama* (contoh: rpm naik / jedug / telat masuk gigi)?",
+      "",
+      confidenceLine(style),
+      "",
+      signatureShort(),
+    ].join("\n");
 
-    return replyTwiML(res, reply);
+    const replyLock = [
+      "Untuk harga yang akurat, kami tidak bisa tebak-tebakan tanpa diagnosa.",
+      "Mohon kirim *Mobil + Tahun + Gejala utama* (1 kalimat saja).",
+      "Kalau sudah siap datang, ketik *JADWAL* biar kami amankan slot cek.",
+      "",
+      confidenceLine(style),
+      "",
+      signatureShort(),
+    ].join("\n");
+
+    return replyTwiML(res, (strictOn && ticket.lockMode) ? replyLock : replySoft);
   }
 
-  // ✅ MODE DIAM anti misnok (legacy) — kalau suspicious dan stage 0
+  // fallback legacy: suspicious stage 0 (kalau antiOff)
   if (!antiOn && suspicious && stage === 0) {
     const reply = [
       "Untuk biaya biasanya tergantung hasil diagnosa, karena tiap unit & penyebabnya bisa berbeda.",
@@ -1207,7 +1186,7 @@ async function webhookHandler(req, res) {
     return replyTwiML(res, reply);
   }
 
-  // ✅ MODE DOMINAN elegan kalau diremehkan
+  // MODE DOMINAN elegan kalau diremehkan
   if (challenging) {
     const reply = [
       "Untuk transmisi, yang menentukan hasil itu pembacaan data + pengukuran, bukan tebak-tebakan atau ganti part dulu.",
@@ -1312,7 +1291,9 @@ app.get("/cron/followup", async (req, res) => {
 });
 
 // ---------- HEALTH ----------
-app.get("/", (_req, res) => res.status(200).send("HONGZ AI SERVER — HYBRID C+ ELITE (ADMIN STABIL + RADAR + ANTI 3T3M) — OK"));
+app.get("/", (_req, res) =>
+  res.status(200).send("HONGZ AI SERVER — HYBRID C+ ELITE (ADMIN STABIL PATCH + RADAR + ANTI 3T3M) — OK")
+);
 
 // ---------- START ----------
 const port = process.env.PORT || 10000;
