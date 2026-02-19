@@ -1,66 +1,6 @@
 /**
- * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — FINAL (PATCH: ADMIN STABIL FIX)
+ * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — FINAL (PATCH: ADMIN STABIL FIX + AUTOCLAIM CLEAN)
  * ✅ Fokus Bengkel Hongz (towing hanya darurat)
- *
- * FITUR:
- * - Hybrid AI C+ (PRIMARY -> FALLBACK) paling cerdas & stabil
- * - Human AI natural (mekanik senior), tidak kaku, tidak “preman todong closing”
- * - Closing/CTA bertahap (stage-based) + buying-signal detector
- * - MODE DIAM+ / LOCK MODE: Anti jebakan harga 3T + 3M (2-strike)
- * - MODE DOMINAN elegan kalau diremehkan
- * - Ticket + scoring + tag + admin notif + follow-up CRON
- * - RADAR MONITOR: notif real-time semua chat masuk ke nomor monitor (private)
- * - ADMIN STABIL (PATCH): notif tidak mudah miss (score/urgent/jadwal/towing/lokasi/keyword)
- *
- * REQUIRED ENV:
- *   TWILIO_ACCOUNT_SID
- *   TWILIO_AUTH_TOKEN
- *   TWILIO_WHATSAPP_FROM      e.g. "whatsapp:+14155238886" (Twilio Sandbox) atau WABA resmi Twilio
- *   ADMIN_WHATSAPP_TO         e.g. "whatsapp:+6281375430728"  <-- WAJIB format Twilio (bukan wa.me)
- *
- * OPTIONAL (AI):
- *   OPENAI_API_KEY
- *   OPENAI_MODEL_PRIMARY="gpt-4o"        (utama, paling cerdas)
- *   OPENAI_MODEL_FALLBACK="gpt-4o-mini"  (cadangan hemat/stabil)
- *   OPENAI_TIMEOUT_MS="9000"
- *
- * RADAR MONITOR:
- *   MONITOR_WHATSAPP_TO="whatsapp:+6281260628100"
- *   MONITOR_LEVEL="ALL"          (ALL | POTENTIAL | PRIORITY)
- *   MONITOR_COOLDOWN_SEC="20"
- *
- * ADMIN STABIL:
- *   ADMIN_NOTIFY_ENABLED="true"
- *   ADMIN_NOTIFY_MIN_SCORE="5"
- *   ADMIN_NOTIFY_COOLDOWN_SEC="60"
- *   ADMIN_NOTIFY_KEYWORDS="..."   (kalau kosong -> pakai default)
- *
- * ANTI 3T+3M:
- *   ANTI_JEBEH_ENABLED="true"
- *   ANTI_JEBEH_STRICT="true"
- *   ANTI_JEBEH_STRIKES_LOCK="2"
- *   ANTI_JEBEH_MIN_INFO_REQUIRED="true"
- *
- * BRANDING:
- *   BIZ_NAME, BIZ_ADDRESS, BIZ_HOURS, MAPS_LINK
- *   WHATSAPP_ADMIN, WHATSAPP_CS   (public https://wa.me/ links)
- *
- * TOWING STYLE:
- *   TOWING_STYLE="3"  (1 ideal | 2 super singkat | 3 kepala bengkel premium)
- *
- * FOLLOWUP:
- *   FOLLOWUP_ENABLED="true"
- *   FOLLOWUP_STAGE1_HOURS="18"
- *   FOLLOWUP_STAGE2_HOURS="48"
- *   FOLLOWUP_COOLDOWN_HOURS="24"
- *   FOLLOWUP_MAX_PER_CUSTOMER="2"
- *   CRON_KEY="hongzCron_xxx"
- *
- * STORAGE:
- *   DATA_DIR="/var/data"
- *
- * DEBUG:
- *   DEBUG="true"
  *
  * NOTE DEPENDENCY (package.json):
  *   "express", "body-parser", "twilio", "openai"
@@ -136,9 +76,14 @@ const {
   SCARCITY_SLOTS = "2",
 
   // Storage / cron / debug
-  DATA_DIR = process.env.DATA_DIR ||"/tmp",
+  DATA_DIR = process.env.DATA_DIR || "/tmp",
   CRON_KEY = "",
   DEBUG = "false",
+
+  // AUTO CLAIM (dirapikan: global)
+  AUTO_CLAIM_ENABLED = "false",
+  AUTO_CLAIM_MIN_SCORE = "5",
+  AUTO_CLAIM_TYPES = "TOWING,JADWAL", // or ALL
 } = process.env;
 
 const IS_DEBUG = String(DEBUG).toLowerCase() === "true";
@@ -228,6 +173,22 @@ function isMonitor(from) {
   const m = normalizeFrom(MONITOR_WHATSAPP_TO).toLowerCase();
   const f = normalizeFrom(from).toLowerCase();
   return !!(m && f && m === f);
+}
+
+// ---------- AUTO CLAIM (global) ----------
+function autoClaimAllowed(ticket) {
+  const on = String(AUTO_CLAIM_ENABLED).toLowerCase() === "true";
+  if (!on) return false;
+
+  const minScore = Number(AUTO_CLAIM_MIN_SCORE || 5);
+  const types = String(AUTO_CLAIM_TYPES || "")
+    .toUpperCase().split(",").map(s => s.trim()).filter(Boolean);
+
+  const typeOk = types.includes("ALL") || types.includes(String(ticket.type || "").toUpperCase());
+  const scoreOk = Number(ticket.score || 0) >= minScore;
+
+  if (ticket.status === "CLOSED" || ticket.status === "CLAIMED") return false;
+  return typeOk && scoreOk;
 }
 
 // ---------- LOCATION PARSER ----------
@@ -393,13 +354,10 @@ function askedForSchedule(body) {
 // ---------- 3T + 3M (Anti Jebeh Harga) ----------
 function detect3T3M(body) {
   const t = String(body || "").toLowerCase();
-
-  // 3M
   const murah = /(murah|termurah|diskon|promo|nego|tawar|budget|harga pas|harga aja|biaya aja)/i.test(t);
   const meriah = /(paket|promo|bonus|murah meriah|harga paket)/i.test(t);
   const mantap = /(pokoknya harus beres|harus jadi|yang penting jadi|langsung beres|pasti sembuh|garansi pasti|jamin pasti)/i.test(t);
 
-  // 3T
   const tanya2 = /(berapa|biaya|harga|kisaran|range|estimasi)/i.test(t) && t.length < 80;
   const tes2 = /(yakin bisa|bisa gak sih|bengkel lain|coba jelasin|jangan bohong|kok mahal)/i.test(t);
   const tawar2 = /(nego|tawar|diskon|kurangin|murahin)/i.test(t);
@@ -460,17 +418,13 @@ function getOrCreateTicket(db, customerId, from) {
     locationUrl: "",
     notes: [],
     type: "GENERAL", // GENERAL | TOWING | JADWAL
-    stage: 0, // 0=baru ngobrol, 1=mulai ada info, 2=siap diarahkan
+    stage: 0,
     followupCount: 0,
     lastFollowupAtMs: 0,
     lastInboundAtMs: nowMs(),
     lastBotAtMs: 0,
-
-    // anti-spam
     lastRadarAtMs: 0,
     lastAdminNotifyAtMs: 0,
-
-    // anti jebeh (3T+3M)
     priceStrike: 0,
     lockMode: false,
   };
@@ -514,17 +468,14 @@ function monitorAllowedByLevel(score) {
   const lvl = String(MONITOR_LEVEL || "ALL").toUpperCase();
   if (lvl === "PRIORITY") return score >= 8;
   if (lvl === "POTENTIAL") return score >= 5;
-  return true; // ALL
+  return true;
 }
 
 async function notifyMonitor({ title, ticket, body }) {
   const to = normalizeFrom(MONITOR_WHATSAPP_TO);
   if (!to) return;
-
-  // jangan kirim kalau monitor = admin (biar tidak dobel)
   if (normalizeFrom(ADMIN_WHATSAPP_TO).toLowerCase() === to.toLowerCase()) return;
 
-  // anti-spam (cooldown per ticket)
   const cd = Math.max(0, Number(MONITOR_COOLDOWN_SEC || 20)) * 1000;
   const now = nowMs();
   if (cd > 0 && ticket.lastRadarAtMs && (now - ticket.lastRadarAtMs) < cd) return;
@@ -553,10 +504,9 @@ async function notifyMonitor({ title, ticket, body }) {
 }
 
 // ===============================
-// TOWING (Adaptive Premium Logic) — DEFAULT STYLE = TOWING_STYLE
-// Footer towing: tanpa MAPS_LINK
+// TOWING / JADWAL
 // ===============================
-function towingInstruction(ticket, humanStyle) {
+function towingInstruction(_ticket, humanStyle) {
   const style = String(TOWING_STYLE || "3");
   const lines = [];
 
@@ -603,9 +553,6 @@ function towingInstruction(ticket, humanStyle) {
   return lines.join("\n");
 }
 
-// ===============================
-// JADWAL / BOOKING
-// ===============================
 function jadwalInstruction(_ticket, humanStyle) {
   const lines = [];
   lines.push("Siap, untuk booking pemeriksaan bisa kirim data singkat ya:");
@@ -619,8 +566,6 @@ function jadwalInstruction(_ticket, humanStyle) {
   lines.push("");
   lines.push("⚡ Jika butuh respons cepat, bisa langsung voice call Admin:");
   lines.push(WHATSAPP_ADMIN);
-  lines.push("");
-  lines.push("Kami bantu arahkan supaya datang tidak sia-sia.");
   lines.push("");
   lines.push(confidenceLine(humanStyle));
   lines.push("");
@@ -636,18 +581,15 @@ function withTimeout(promise, ms, label = "TIMEOUT") {
   ]);
 }
 
-// anti alamat ngawur
 function mustMapsOnly(text, userText) {
   const low = String(text || "").toLowerCase();
   const u = String(userText || "").toLowerCase();
-
   const userAskingLocation = /(alamat|lokasi|maps|map|di mana|dimana)/i.test(u);
   const looksLikeAddress = /(jl\.|jalan\s+\w|no\.|nomor\s+\d|kecamatan|kelurahan|kode pos)/i.test(low);
 
   if (userAskingLocation && looksLikeAddress) return `Untuk lokasi, silakan buka: ${MAPS_LINK}`;
   const aiClearlyInventing = /(jl\.|jalan\s+\w).*(no\.|nomor\s+\d)/i.test(low);
   if (aiClearlyInventing) return `Untuk lokasi, silakan buka: ${MAPS_LINK}`;
-
   return text;
 }
 
@@ -678,7 +620,7 @@ ATURAN WAJIB:
 KONTEKS:
 - TicketTag: ${ticket.tag}
 - TicketType: ${ticket.type}
-- Stage: ${stage} (0=baru ngobrol, 1=mulai ada info, 2=siap diarahkan)
+- Stage: ${stage}
 - cantDrive: ${cantDrive}
 - priceOnly: ${priceOnly}
 
@@ -686,7 +628,7 @@ POLICY:
 - ${policy}
 
 OUTPUT:
-- 1 paragraf analisa singkat yang meyakinkan & menenangkan (tanpa nakut-nakutin)
+- 1 paragraf analisa singkat yang meyakinkan & menenangkan
 - lalu 1–2 pertanyaan triase (jika perlu)
 - jangan tulis signature panjang (server yang tambah).
 `.trim();
@@ -722,7 +664,6 @@ async function aiReply({ userText, ticket, style, stage, cantDrive, priceOnly })
   const sys = buildSystemPrompt({ style, stage, ticket, userText, cantDrive, priceOnly });
 
   try {
-    // Hybrid: primary -> fallback
     let text = await aiTryModel(client, OPENAI_MODEL_PRIMARY, userText, sys, timeoutMs);
     if (!text && OPENAI_MODEL_FALLBACK && OPENAI_MODEL_FALLBACK !== OPENAI_MODEL_PRIMARY) {
       text = await aiTryModel(client, OPENAI_MODEL_FALLBACK, userText, sys, timeoutMs);
@@ -841,7 +782,7 @@ function handleAdminCommand(db, body) {
   return `Perintah tidak dikenal. Ketik HELP.`;
 }
 
-// ---------- FOLLOW-UP ----------
+// ---------- FOLLOW-UP (tetap sama seperti file Papa) ----------
 function isDueForFollowup(ticket) {
   if (String(FOLLOWUP_ENABLED).toLowerCase() !== "true") return false;
   if (!ticket || ticket.status === "CLOSED") return false;
@@ -1025,37 +966,15 @@ async function webhookHandler(req, res) {
     msisdn: cleanMsisdn(from),
     type,
     stage,
-  }); 
- 
-  // ---------- AUTO CLAIM ----------
-  
-const {
-  AUTO_CLAIM_ENABLED = "false",
-  AUTO_CLAIM_MIN_SCORE = "5",
-  AUTO_CLAIM_TYPES = "TOWING,JADWAL", // or ALL
-} = process.env;
+  });
 
-function autoClaimAllowed(ticket) {
-  const on = String(AUTO_CLAIM_ENABLED).toLowerCase() === "true";
-  if (!on) return false;
+  // AUTO CLAIM (rapih, global)
+  if (autoClaimAllowed(ticket)) {
+    ticket.status = "CLAIMED";
+    ticket.claimedBy = ADMIN_WHATSAPP_TO;
+    ticket.claimedAt = nowISO();
+  }
 
-  const minScore = Number(AUTO_CLAIM_MIN_SCORE || 5);
-  const types = String(AUTO_CLAIM_TYPES || "").toUpperCase().split(",").map(s => s.trim()).filter(Boolean);
-
-  const typeOk = types.includes("ALL") || types.includes(String(ticket.type || "").toUpperCase());
-  const scoreOk = Number(ticket.score || 0) >= minScore;
-
-  // jangan auto-claim kalau sudah closed / sudah claimed
-  if (ticket.status === "CLOSED" || ticket.status === "CLAIMED") return false;
-
-  return typeOk && scoreOk;
-}
-
-if (autoClaimAllowed(ticket)) {
-  ticket.status = "CLAIMED";
-  ticket.claimedBy = ADMIN_WHATSAPP_TO;
-  ticket.claimedAt = nowISO();
-}
   if (location?.mapsUrl) ticket.locationUrl = location.mapsUrl;
 
   db.events.push({
@@ -1072,12 +991,12 @@ if (autoClaimAllowed(ticket)) {
 
   const style = detectStyle(body);
 
-  // ✅ RADAR: notif setiap chat masuk (atau sesuai level)
+  // ✅ RADAR
   if (MONITOR_WHATSAPP_TO && monitorAllowedByLevel(score)) {
     await notifyMonitor({ title: "🛰️ RADAR IN", ticket, body });
   }
 
-  // ✅ ADMIN STABIL (PATCH): jangan gampang miss
+  // ✅ ADMIN STABIL
   const adminNotifyOn = String(ADMIN_NOTIFY_ENABLED).toLowerCase() === "true";
   if (adminNotifyOn) {
     const hit = matchAdminKeyword(body);
@@ -1086,7 +1005,6 @@ if (autoClaimAllowed(ticket)) {
     const now = nowMs();
     const cooldownOk = !ticket.lastAdminNotifyAtMs || (now - ticket.lastAdminNotifyAtMs) >= cdMs;
 
-    // jangan kirim kalau admin=monitor
     const adminEqMon =
       normalizeFrom(ADMIN_WHATSAPP_TO).toLowerCase() === normalizeFrom(MONITOR_WHATSAPP_TO).toLowerCase();
 
@@ -1165,13 +1083,11 @@ if (autoClaimAllowed(ticket)) {
     buyingSignal ||
     hasLoc;
 
-  // reset lock kalau sudah mulai serius
   if (hasMinInfo) {
     ticket.priceStrike = 0;
     ticket.lockMode = false;
   }
 
-  // kalau kena 3T+3M dan belum ada info minimum -> tahan ketat
   if (antiOn && det.hit && (!minInfoRequired || !hasMinInfo)) {
     ticket.priceStrike = (ticket.priceStrike || 0) + 1;
     if (ticket.priceStrike >= strikesLock) ticket.lockMode = true;
@@ -1200,7 +1116,6 @@ if (autoClaimAllowed(ticket)) {
     return replyTwiML(res, (strictOn && ticket.lockMode) ? replyLock : replySoft);
   }
 
-  // fallback legacy: suspicious stage 0 (kalau antiOff)
   if (!antiOn && suspicious && stage === 0) {
     const reply = [
       "Untuk biaya biasanya tergantung hasil diagnosa, karena tiap unit & penyebabnya bisa berbeda.",
@@ -1215,7 +1130,6 @@ if (autoClaimAllowed(ticket)) {
     return replyTwiML(res, reply);
   }
 
-  // MODE DOMINAN elegan kalau diremehkan
   if (challenging) {
     const reply = [
       "Untuk transmisi, yang menentukan hasil itu pembacaan data + pengukuran, bukan tebak-tebakan atau ganti part dulu.",
@@ -1321,7 +1235,7 @@ app.get("/cron/followup", async (req, res) => {
 
 // ---------- HEALTH ----------
 app.get("/", (_req, res) =>
-  res.status(200).send("HONGZ AI SERVER — HYBRID C+ ELITE (ADMIN STABIL PATCH + RADAR + ANTI 3T3M) — OK")
+  res.status(200).send("HONGZ AI SERVER — HYBRID C+ ELITE (ADMIN STABIL PATCH + RADAR + ANTI 3T3M + AUTOCLAIM CLEAN) — OK")
 );
 
 // ---------- START ----------
