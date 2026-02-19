@@ -1,6 +1,6 @@
 /**
- * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — FINAL (PATCH: ADMIN STABIL FIX + AUTOCLAIM CLEAN)
- * ✅ Fokus Bengkel Hongz (towing hanya darurat)
+ * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — FINAL
+ * PATCH: ADMIN STABIL FIX + AUTOCLAIM CLEAN + BUILD SYSTEM PROMPT FIX (NO STRAY TEXT)
  *
  * NOTE DEPENDENCY (package.json):
  *   "express", "body-parser", "twilio", "openai"
@@ -80,7 +80,7 @@ const {
   CRON_KEY = "",
   DEBUG = "false",
 
-  // AUTO CLAIM (dirapikan: global)
+  // AUTO CLAIM (global)
   AUTO_CLAIM_ENABLED = "false",
   AUTO_CLAIM_MIN_SCORE = "5",
   AUTO_CLAIM_TYPES = "TOWING,JADWAL", // or ALL
@@ -271,7 +271,7 @@ function scarcityLine(ticket) {
 
 // ---------- LEAD SCORING ----------
 function detectPremium(body) {
-  return /land cruiser|alphard|vellfire|lexus|bmw|mercedes|benz|audi|porsche|range rover|land rover|prado|lc200|lc300|rx350|mini cooper|ferari|laborghini/i.test(body);
+  return /land cruiser|alphard|vellfire|lexus|bmw|mercedes|benz|audi|porsche|range rover|land rover|prado|lc200|lc300|rx350|mini cooper|ferrari|lamborghini/i.test(body);
 }
 function detectCantDrive(body) {
   return /tidak bisa jalan|ga bisa jalan|gak bisa jalan|mogok|stuck|macet total|selip parah|rpm naik tapi tidak jalan|masuk d.*tidak jalan|masuk r.*tidak jalan|berisiko|darurat|tidak bisa hidup|gak bisa hidup|ga bisa hidup/i.test(body);
@@ -303,7 +303,7 @@ function detectStyle(body) {
   const low = t.toLowerCase();
 
   const panic = /darurat|tolong|cepat|mogok|tidak bisa|gak bisa|ga bisa|stuck|bahaya/i.test(low);
-  const formal = /mohon|berkenan|apabila|dengan hormat|terima kasih|pak|bu|bapak|ibu|tuan|nyonya|ringankan langkah/i.test(low);
+  const formal = /mohon|berkenan|apabila|dengan hormat|terima kasih|pak|bu|bapak|ibu|tuan|nyonya/i.test(low);
   const hasEmoji = /[\u{1F300}-\u{1FAFF}]/u.test(t);
   const short = low.length <= 18;
 
@@ -340,7 +340,7 @@ function hasVehicleInfo(body) {
   const t = String(body || "").toLowerCase();
   const hasYear = /\b(19[8-9]\d|20[0-3]\d)\b/.test(t);
   const hasBrand = /toyota|honda|nissan|mitsubishi|suzuki|daihatsu|mazda|hyundai|kia|wuling|dfsk|bmw|mercedes|audi|lexus|byd|porsche|ford|subaru|chevrolet|volkswagen|mg|chery|landrover|isuzu/i.test(t);
-  const hasModelCue = /innova|avanza|rush|fortuner|alphard|vellfire|freed|odyssey|mobilio|sienta|altis|x-trail|ignis|karimun|wagonr|xl7|sx4|newbaleno|baleno|jimmy|crv|hrv|pajero|xpander|ertiga|brio|jazz|civic|camry|yaris|carens|calya|agya|ayla|sigra|rocky|raize|almaz|confero|livina|march|datsungo|ertiga|xover|outlander|landcruiser|terios|picanto|accord|wrv|luxio|granmax|sirion|xforce|destinator|cortez|h1|lc200|lc300|rx350|minicooper/i.test(t);
+  const hasModelCue = /innova|avanza|rush|fortuner|alphard|vellfire|freed|odyssey|mobilio|sienta|altis|x-trail|ignis|karimun|wagonr|xl7|sx4|baleno|jimny|crv|hrv|pajero|xpander|ertiga|brio|jazz|civic|camry|yaris|carens|calya|agya|ayla|sigra|rocky|raize|almaz|confero|livina|march|datsun|outlander|landcruiser|terios|picanto|accord|wrv|luxio|granmax|sirion|xforce|cortez|h1|lc200|lc300|rx350|minicooper/i.test(t);
   return hasYear || hasBrand || hasModelCue;
 }
 function hasSymptomInfo(body) {
@@ -601,14 +601,20 @@ function closingPolicy(stage, ticketType, userText) {
   return "boleh ajak booking lebih jelas tapi tetap soft (tanpa ancaman/menakut-nakuti).";
 }
 
+/**
+ * ✅ FIX UTAMA:
+ * buildSystemPrompt hanya satu versi, rapi, dan TIDAK ADA teks nyasar di luar function.
+ */
 function buildSystemPrompt({ style, stage, ticket, userText, cantDrive, priceOnly }) {
   const tone = composeTone(style);
   const policy = closingPolicy(stage, ticket.type, userText);
 
-
   return `
 Anda adalah Kepala Bengkel ${BIZ_NAME} di Medan.
 Spesialis transmisi matic dengan pengalaman nyata di lapangan.
+
+Gaya bahasa: ${tone}.
+Harus terasa seperti mekanik senior/kepala bengkel (bukan CS jual tiket).
 
 Kepribadian:
 - Tegas tapi disukai
@@ -618,32 +624,29 @@ Kepribadian:
 - Berbicara seperti mekanik senior, bukan CS
 
 ATURAN WAJIB:
-1. Jangan pernah beri angka harga pasti.
-2. Jika user hanya tanya harga tanpa info → arahkan ke diagnosa, bukan debat.
-3. Jangan terdengar memaksa booking.
-4. Maksimal 2 pertanyaan dalam satu balasan.
-5. Jangan mengarang alamat. Jika ditanya lokasi, jawab hanya dengan link: ${MAPS_LINK}
-6. Jika unit tidak bisa jalan → sarankan jangan dipaksakan + minta share lokasi.
-7. Jangan merendahkan bengkel lain, tapi tampilkan wibawa profesional.
-8. Hindari kalimat terlalu panjang atau terlalu cerewet.
+1) Jangan pernah beri angka harga pasti.
+2) Jika user hanya tanya harga tanpa info → arahkan ke diagnosa, bukan debat.
+3) Jangan terdengar memaksa booking. Ikuti policy di bawah.
+4) Maksimal 2 pertanyaan dalam satu balasan.
+5) Jangan mengarang alamat. Jika ditanya lokasi, jawab hanya link ini: ${MAPS_LINK}
+6) Jika unit tidak bisa jalan/berisiko → sarankan jangan dipaksakan + minta share lokasi.
+7) Jangan merendahkan bengkel lain, tapi tampilkan wibawa profesional.
+8) Jawaban ringkas, tajam, relevan. Hindari cerewet.
 
-Strategi Arena:
-- Jika user terlihat serius → arahkan dengan percaya diri.
-- Jika user ragu → yakinkan dengan logika teknis.
-- Jika user mencoba menekan harga → jawab tenang dan kembali ke proses diagnosa.
-- Jika user meremehkan → jawab elegan dan berwibawa, bukan marah.
-
-Konteks Ticket:
+KONTEKS TICKET:
 - Tag: ${ticket.tag}
 - Type: ${ticket.type}
-- Stage: ${stage}
+- Stage: ${stage} (0 baru ngobrol, 1 mulai ada info, 2 siap diarahkan)
 - cantDrive: ${cantDrive}
 - priceOnly: ${priceOnly}
 
-Format Jawaban:
-- 1 paragraf analisa singkat dan meyakinkan
-- 1–2 pertanyaan triase (jika perlu)
-- Tidak perlu signature (server akan tambahkan)
+POLICY CLOSING:
+- ${policy}
+
+FORMAT JAWABAN:
+- 1 paragraf analisa singkat yang meyakinkan & menenangkan (tanpa nakut-nakutin)
+- lalu 1–2 pertanyaan triase (jika perlu)
+- jangan tulis signature panjang (server yang tambah)
 
 Tujuan:
 Membuat calon pelanggan merasa:
@@ -651,33 +654,6 @@ Membuat calon pelanggan merasa:
 ✔ Tidak digurui
 ✔ Tidak ditekan
 ✔ Percaya untuk lanjut
-`;
-}
-Anda adalah konsultan teknis WhatsApp ${BIZ_NAME} (Medan), spesialis transmisi matic.
-Gaya bahasa: ${tone}. Harus terasa seperti mekanik senior/kepala bengkel (bukan CS jual tiket).
-
-ATURAN WAJIB:
-- Jangan mengarang alamat. Jika ditanya lokasi/alamat, jawab HANYA dengan link: ${MAPS_LINK}
-- Maksimal 2 pertanyaan dalam satu balasan.
-- Jangan “todong closing”. Ikuti policy.
-- Jika tidak bisa jalan/berisiko: sarankan jangan dipaksakan + minta share lokasi.
-- Jika user tanya harga: jangan beri angka fix. Jelaskan bahwa perlu diagnosa dulu (singkat).
-- Jawaban ringkas, tajam, relevan. Hindari cerewet.
-
-KONTEKS:
-- TicketTag: ${ticket.tag}
-- TicketType: ${ticket.type}
-- Stage: ${stage}
-- cantDrive: ${cantDrive}
-- priceOnly: ${priceOnly}
-
-POLICY:
-- ${policy}
-
-OUTPUT:
-- 1 paragraf analisa singkat yang meyakinkan & menenangkan
-- lalu 1–2 pertanyaan triase (jika perlu)
-- jangan tulis signature panjang (server yang tambah).
 `.trim();
 }
 
@@ -829,7 +805,7 @@ function handleAdminCommand(db, body) {
   return `Perintah tidak dikenal. Ketik HELP.`;
 }
 
-// ---------- FOLLOW-UP (tetap sama seperti file Papa) ----------
+// ---------- FOLLOW-UP ----------
 function isDueForFollowup(ticket) {
   if (String(FOLLOWUP_ENABLED).toLowerCase() !== "true") return false;
   if (!ticket || ticket.status === "CLOSED") return false;
@@ -1015,7 +991,7 @@ async function webhookHandler(req, res) {
     stage,
   });
 
-  // AUTO CLAIM (rapih, global)
+  // AUTO CLAIM (global)
   if (autoClaimAllowed(ticket)) {
     ticket.status = "CLAIMED";
     ticket.claimedBy = ADMIN_WHATSAPP_TO;
@@ -1282,7 +1258,7 @@ app.get("/cron/followup", async (req, res) => {
 
 // ---------- HEALTH ----------
 app.get("/", (_req, res) =>
-  res.status(200).send("HONGZ AI SERVER — HYBRID C+ ELITE (ADMIN STABIL PATCH + RADAR + ANTI 3T3M + AUTOCLAIM CLEAN) — OK")
+  res.status(200).send("HONGZ AI SERVER — HYBRID C+ ELITE (ADMIN STABIL + RADAR + ANTI 3T3M + AUTOCLAIM CLEAN) — OK")
 );
 
 // ---------- START ----------
