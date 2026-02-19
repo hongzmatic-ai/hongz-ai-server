@@ -339,8 +339,8 @@ function detectBuyingSignal(body) {
 function hasVehicleInfo(body) {
   const t = String(body || "").toLowerCase();
   const hasYear = /\b(19[8-9]\d|20[0-3]\d)\b/.test(t);
-  const hasBrand = /toyota|honda|nissan|mitsubishi|suzuki|daihatsu|mazda|hyundai|kia|wuling|dfsk|bmw|mercedes|audi|lexus|byd|porsche|ford|subaru|chevrolet|volkswagen/i.test(t);
-  const hasModelCue = /innova|avanza|rush|fortuner|alphard|vellfire|x-trail|crv|hrv|pajero|xpander|ertiga|brio|jazz|civic|camry|yaris|carens/i.test(t);
+  const hasBrand = /toyota|honda|nissan|mitsubishi|suzuki|daihatsu|mazda|hyundai|kia|wuling|dfsk|bmw|mercedes|audi|lexus|byd|porsche|ford|subaru|chevrolet|volkswagen|mg|chery|landrover|isuzu/i.test(t);
+  const hasModelCue = /innova|avanza|rush|fortuner|alphard|vellfire|x-trail|crv|hrv|pajero|xpander|ertiga|brio|jazz|civic|camry|yaris|carens|calya|agya|ayla|sigra|rocky|raize|almaz|confero|livina|march|datsungo|ertiga|xover|outlander|landcruiser|terios|picanto|accord|wrv|luxio|granmax|sirion|xforce|destinator/i.test(t);
   return hasYear || hasBrand || hasModelCue;
 }
 function hasSymptomInfo(body) {
