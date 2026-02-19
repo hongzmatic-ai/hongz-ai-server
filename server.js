@@ -1,6 +1,6 @@
 /**
- * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — RAJA MEDAN FINAL
- * ✅ PATCH: ARENA CONTROL MODE + PRIORITY ROUTING 1.2.3.4 + ADMIN STABIL + RADAR + ANTI 3T3M + AUTOCLAIM CLEAN
+ * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — RAJA MEDAN FINAL (PATCHED)
+ * ✅ FIX: NO_START + AC MODE + CantDrive split + Lane-aware AI (no more "nyasar transmisi")
  *
  * DEPENDENCY (package.json):
  *   "express", "body-parser", "twilio", "openai"
@@ -277,19 +277,38 @@ function scarcityLine(ticket) {
   return "⏳ Jika memungkinkan, lebih cepat dicek biasanya lebih aman.";
 }
 
+// ===================================================
+// ✅ DETECTORS (FIXED): NO_START / CANT_DRIVE / AC
+// ===================================================
+function detectNoStart(body) {
+  const t = String(body || "").toLowerCase();
+  return /tidak bisa hidup|gak bisa hidup|ga bisa hidup|tidak bisa starter|gak bisa starter|ga bisa starter|distarter|starter bunyi|cekrek|ngorok|aki tekor|accu tekor|lampu redup/i.test(t);
+}
+
+function detectCantDrive(body) {
+  // ✅ KHUSUS: mobil bisa hidup tapi TIDAK BISA JALAN/BERGERAK
+  // ❌ jangan masukkan: "mogok" dan "tidak bisa hidup"
+  const t = String(body || "").toLowerCase();
+  return /tidak bisa jalan|ga bisa jalan|gak bisa jalan|tidak bisa bergerak|ga bisa bergerak|gak bisa bergerak|stuck|macet total|selip parah|rpm naik tapi tidak jalan|masuk d.*tidak jalan|masuk r.*tidak jalan|d masuk tapi tidak jalan|r masuk tapi tidak jalan|dorong|tarik|angkut|towing|evakuasi/i.test(t);
+}
+
+function detectAC(body) {
+  const t = String(body || "").toLowerCase();
+  return /(^|\b)ac(\b|$)|freon|kompresor|blower|evaporator|kondensor|kipas ac|ac tidak dingin|ga dingin|gak dingin|dingin sebentar|panas lagi/i.test(t);
+}
+
 // ---------- LEAD SCORING ----------
 function detectPremium(body) {
   return /land cruiser|alphard|vellfire|lexus|bmw|mercedes|benz|audi|porsche|range rover|land rover|prado|lc200|lc300|rx350|mini cooper|ferrari|lamborghini/i.test(body);
 }
-function detectCantDrive(body) {
-  return /tidak bisa jalan|ga bisa jalan|gak bisa jalan|mogok|stuck|macet total|selip parah|rpm naik tapi tidak jalan|masuk d.*tidak jalan|masuk r.*tidak jalan|berisiko|darurat|tidak bisa hidup|gak bisa hidup|ga bisa hidup/i.test(body);
-}
+
 function detectPriceOnly(body) {
   return /berapa|biaya|harga|kisaran|range|murah|diskon|nego|budget/i.test(body);
 }
-function leadScore({ body, hasLocation, isTowingCmd, isJadwalCmd }) {
+
+function leadScore({ body, hasLocation, isTowingCmd, isJadwalCmd, cantDrive }) {
   let score = 0;
-  if (detectCantDrive(body)) score += 5;
+  if (cantDrive) score += 5;
   if (hasLocation) score += 5;
   if (isTowingCmd) score += 5;
   if (detectPremium(body)) score += 3;
@@ -353,7 +372,8 @@ function hasVehicleInfo(body) {
 }
 function hasSymptomInfo(body) {
   const t = String(body || "").toLowerCase();
-  return /rpm|selip|jedug|hentak|telat|ngelos|overheat|bau|getar|gigi|d|r|n|p|nyentak|delay|slip|noise|bunyi|bocor|getar|tidak bisa jalan|tidak bisa hidup|macet|stuck/i.test(t);
+  // NOTE: biar tidak “nyasar”, symptom transmisi hanya dipakai kalau user memang menyebut gejala transmisi
+  return /rpm naik tapi tidak jalan|selip|jedug|hentak|telat masuk|telat gigi|ngelos|overheat transmisi|bau gosong|gigi d|gigi r|valve body|torque converter|atf|oli transmisi/i.test(t);
 }
 function askedForSchedule(body) {
   return /kapan bisa masuk|jadwal|booking|bisa hari|bisa jam|kapan bisa datang|antri|slot/i.test(String(body || "").toLowerCase());
@@ -376,7 +396,7 @@ function detect3T3M(body) {
 
 // ---------- ADMIN KEYWORDS ----------
 const DEFAULT_ADMIN_KEYWORDS =
-  "tidak bisa jalan,gak bisa jalan,ga bisa jalan,mogok,macet,stuck,selip,rpm naik tapi tidak jalan,masuk d tidak jalan,masuk r tidak jalan,tidak bisa hidup,gak bisa hidup,ga bisa hidup,towing,evakuasi,dorong,tarik,angkut,jadwal,booking,bisa masuk,hari ini bisa,besok bisa,jam berapa,kapan bisa,alamat,lokasi,maps,delay,jedug,hentak,overheat,scan,diagnosa";
+  "tidak bisa jalan,gak bisa jalan,ga bisa jalan,stuck,selip,rpm naik tapi tidak jalan,masuk d tidak jalan,masuk r tidak jalan,towing,evakuasi,dorong,tarik,angkut,jadwal,booking,bisa masuk,hari ini bisa,besok bisa,jam berapa,kapan bisa,alamat,lokasi,maps,delay,jedug,hentak,overheat,scan,diagnosa,tidak bisa hidup,gak bisa hidup,ga bisa hidup,ac tidak dingin";
 
 function parseKeywords(csv) {
   return String(csv || "")
@@ -425,7 +445,7 @@ function getOrCreateTicket(db, customerId, from) {
     lastBody: "",
     locationUrl: "",
     notes: [],
-    type: "GENERAL", // GENERAL | TOWING | JADWAL
+    type: "GENERAL", // GENERAL | TOWING | JADWAL | AC | NO_START
     stage: 0,
     followupCount: 0,
     lastFollowupAtMs: 0,
@@ -515,19 +535,19 @@ async function notifyMonitor({ title, ticket, body }) {
 }
 
 // ===============================
-// TOWING / JADWAL
+// TOWING / JADWAL / AC / NO_START
 // ===============================
 function towingInstruction(_ticket, humanStyle) {
   const style = String(TOWING_STYLE || "3");
   const lines = [];
 
   const premiumDiagnosis =
-    "Biasanya kondisi seperti ini berkaitan dengan tekanan oli transmisi drop, clutch aus, valve body bermasalah, atau torque converter.";
+    "Biasanya kondisi seperti ini bisa terkait tekanan oli transmisi drop, clutch aus, valve body bermasalah, atau torque converter.";
   const suggestionTow =
     "Jika unit sudah tidak bisa bergerak sama sekali, lebih aman dievakuasi (towing) daripada dipaksakan karena bisa menambah kerusakan.";
 
   if (style === "1") {
-    lines.push("Baik Bang, kalau unit sudah *tidak bisa jalan*, jangan dipaksakan dulu ya.");
+    lines.push("Baik Bang, kalau unit sudah *tidak bisa jalan/bergerak*, jangan dipaksakan dulu ya.");
     lines.push(premiumDiagnosis);
     lines.push("Untuk memastikan arah kerusakan, unit perlu dicek langsung oleh teknisi.");
     lines.push(suggestionTow);
@@ -536,8 +556,7 @@ function towingInstruction(_ticket, humanStyle) {
     lines.push("⚡ Jika perlu cepat, bisa langsung *voice call Admin*:");
     lines.push(WHATSAPP_ADMIN);
   } else if (style === "2") {
-    lines.push("Kalau unit sudah tidak bisa jalan, jangan dipaksakan.");
-    lines.push("Kemungkinan masalah tekanan oli / valve body / torque converter.");
+    lines.push("Kalau unit sudah tidak bisa jalan/bergerak, jangan dipaksakan.");
     lines.push("Lebih aman evakuasi daripada tambah rusak.");
     lines.push("");
     lines.push("Kirim *share lokasi* — admin koordinasi towing aman.");
@@ -545,11 +564,11 @@ function towingInstruction(_ticket, humanStyle) {
     lines.push(WHATSAPP_ADMIN);
   } else {
     lines.push("Baik Bang.");
-    lines.push("Kalau unit sudah *tidak bisa jalan*, jangan dipaksakan dulu — bisa memperparah kerusakan internal.");
+    lines.push("Kalau unit sudah *tidak bisa jalan/bergerak*, jangan dipaksakan dulu — bisa memperparah kerusakan.");
     lines.push("");
     lines.push(premiumDiagnosis);
     lines.push("");
-    lines.push("Unit seperti ini perlu pemeriksaan tekanan oli & sistem transmisi secara langsung.");
+    lines.push("Unit seperti ini perlu pemeriksaan presisi secara langsung.");
     lines.push(suggestionTow);
     lines.push("");
     lines.push("Silakan kirim *share lokasi sekarang* — kami prioritaskan koordinasi evakuasi yang aman.");
@@ -570,7 +589,7 @@ function jadwalInstruction(_ticket, humanStyle) {
   lines.push("");
   lines.push("1️⃣ Nama");
   lines.push("2️⃣ Mobil & tahun");
-  lines.push("3️⃣ Keluhan utama (contoh: rpm naik / jedug / telat masuk gigi)");
+  lines.push("3️⃣ Keluhan utama (singkat)");
   lines.push("4️⃣ Rencana datang (hari & jam)");
   lines.push("");
   lines.push("Setelah data masuk, admin konfirmasi slot & estimasi waktu pengecekan.");
@@ -582,6 +601,32 @@ function jadwalInstruction(_ticket, humanStyle) {
   lines.push("");
   lines.push(signatureShort());
   return lines.join("\n");
+}
+
+function acInstruction(_ticket, style) {
+  return [
+    "Siap Bang, saya fokus **AC** dulu ya (bukan matic).",
+    "AC-nya: **tidak dingin sama sekali** atau **dingin sebentar lalu panas**?",
+    "Blower angin **kencang** atau **lemah**? Ada bunyi kompresor/kipas?",
+    "Biar cepat: kirim **tipe mobil + tahun** + video singkat panel AC (kalau bisa).",
+    "",
+    confidenceLine(style),
+    "",
+    signatureShort(),
+  ].join("\n");
+}
+
+function noStartInstruction(_ticket, style) {
+  return [
+    "Tenang Bang, kita cek cepat ya.",
+    "Saat distarter: **cekrek/lemot** atau **muter normal tapi tidak nyala**?",
+    "Lampu dashboard: **terang** atau **redup/mati**?",
+    "Biar cepat: kirim **video saat distarter** + **tipe mobil & tahun**.",
+    "",
+    confidenceLine(style),
+    "",
+    signatureShort(),
+  ].join("\n");
 }
 
 // ===============================
@@ -600,8 +645,12 @@ function isLowEnergy(body) {
   return /^(p|halo|hai|test|tes|cek|cek\stest|\?)$/.test(t);
 }
 
-// lane classifier (based on Papa's 1.2.3.4)
+// lane classifier (Papa 1.2.3.4 + AC/NO_START lanes)
 function arenaClassify({ body, hasLoc, cantDrive, cmdTowing, cmdJadwal, buyingSignal, scheduleAsk, priceOnly, vInfo, sInfo, suspicious }) {
+  // ✅ prior: AC & NO_START (anti nyasar)
+  if (detectAC(body)) return { lane: "AC", reason: "AC_MODE" };
+  if (detectNoStart(body)) return { lane: "NO_START", reason: "ENGINE_NO_START" };
+
   // LANE 1: URGENT (towing / cant drive / location)
   if (hasLoc || cantDrive || cmdTowing) return { lane: "URGENT", reason: hasLoc ? "HAS_LOCATION" : (cantDrive ? "CANT_DRIVE" : "TOWING_CMD") };
 
@@ -611,7 +660,7 @@ function arenaClassify({ body, hasLoc, cantDrive, cmdTowing, cmdJadwal, buyingSi
   // LANE 4: PRICE TEST (before technical)
   if (priceOnly || suspicious) return { lane: "PRICE_TEST", reason: priceOnly ? "PRICE_ONLY" : "SUSPICIOUS" };
 
-  // LANE 3: TECHNICAL
+  // LANE 3: TECHNICAL (transmisi only if user indicates)
   if (vInfo || sInfo) return { lane: "TECHNICAL", reason: (vInfo && sInfo) ? "VEHICLE+SYMPTOM" : (vInfo ? "VEHICLE_INFO" : "SYMPTOM_INFO") };
 
   // fallback
@@ -622,8 +671,8 @@ function arenaClassify({ body, hasLoc, cantDrive, cmdTowing, cmdJadwal, buyingSi
 // quick lane replies (Arena Control)
 function arenaReplyLowEnergy(style) {
   return [
-    "Siap Bang. Biar saya arahkan cepat ya—mobilnya apa & tahun berapa?",
-    "Gejalanya singkat saja: *rpm naik / jedug / telat masuk gigi / selip*?",
+    "Siap Bang. Biar saya arahkan cepat—mobilnya apa & tahun berapa?",
+    "Keluhannya singkat saja (contoh: **tidak bisa hidup / AC tidak dingin / tidak bisa jalan**).",
     "",
     confidenceLine(style),
     "",
@@ -634,7 +683,7 @@ function arenaReplyLowEnergy(style) {
 function arenaReplyPriceSoft(style) {
   return [
     "Untuk biaya, tergantung hasil diagnosa karena penyebab tiap unit bisa berbeda—jadi kami hindari tebak-tebakan.",
-    "Boleh info *mobil & tahun* + *gejala utama* (1 kalimat) biar saya arahkan langkah paling tepat?",
+    "Boleh info *mobil & tahun* + *keluhan utama* (1 kalimat) biar saya arahkan langkah paling tepat?",
     "",
     confidenceLine(style),
     "",
@@ -645,7 +694,7 @@ function arenaReplyPriceSoft(style) {
 function arenaReplyPriceLock(style) {
   return [
     "Untuk harga yang akurat, kami tidak bisa tebak-tebakan tanpa diagnosa.",
-    "Mohon kirim *Mobil + Tahun + Gejala utama* (1 kalimat saja).",
+    "Mohon kirim *Mobil + Tahun + Keluhan utama* (1 kalimat saja).",
     "Kalau sudah siap datang, ketik *JADWAL* biar kami amankan slot cek.",
     "",
     confidenceLine(style),
@@ -696,16 +745,24 @@ function closingPolicy(stage, ticketType, userText) {
 }
 
 /**
- * buildSystemPrompt (clean, no stray text)
+ * buildSystemPrompt (Lane-aware: AC/NO_START must NOT talk about transmission)
  */
 function buildSystemPrompt({ style, stage, ticket, userText, cantDrive, priceOnly }) {
   const tone = composeTone(style);
   const policy = closingPolicy(stage, ticket.type, userText);
   const maxQ = Math.max(1, Number(ARENA_MAX_QUESTIONS || 2));
+  const lane = String(ticket?.arena?.lane || "GENERAL");
+
+  const laneRule =
+    lane === "AC"
+      ? "KONTEKS LANE=AC: Fokus AC. DILARANG membahas transmisi/gearbox kecuali user menyebut transmisi."
+      : (lane === "NO_START"
+          ? "KONTEKS LANE=NO_START: Fokus mesin tidak hidup (aki/starter/bbm/ignition). DILARANG membahas transmisi."
+          : "KONTEKS LANE=GENERAL/TECHNICAL: Jika user membahas gejala transmisi barulah bahas transmisi.");
 
   return `
 Anda adalah Kepala Bengkel ${BIZ_NAME} di Medan.
-Spesialis transmisi matic dengan pengalaman nyata di lapangan.
+Anda bisa menjawab secara profesional untuk keluhan mobil umum, namun spesialis utama transmisi matic.
 
 Gaya bahasa: ${tone}.
 Harus terasa seperti mekanik senior/kepala bengkel (bukan CS).
@@ -719,6 +776,7 @@ ATURAN WAJIB:
 6) Jika unit tidak bisa jalan/berisiko → sarankan jangan dipaksakan + minta share lokasi.
 7) Jangan merendahkan bengkel lain, tapi tampilkan wibawa profesional.
 8) Jawaban ringkas, tajam, relevan. Hindari cerewet.
+9) ${laneRule}
 
 KONTEKS TICKET:
 - Tag: ${ticket.tag}
@@ -726,7 +784,7 @@ KONTEKS TICKET:
 - Stage: ${stage}
 - cantDrive: ${cantDrive}
 - priceOnly: ${priceOnly}
-- ArenaLane: ${ticket?.arena?.lane || "-"}
+- ArenaLane: ${lane}
 
 POLICY CLOSING:
 - ${policy}
@@ -824,15 +882,19 @@ function statsTickets(db) {
   const priority = active.filter(t => t.tag.includes("PRIORITY")).length;
   const potential = active.filter(t => t.tag.includes("POTENTIAL")).length;
   const normal = active.length - priority - potential;
-  const towing = active.filter(t => t.type === "TOWING").length;
-  const jadwal = active.filter(t => t.type === "JADWAL").length;
+
+  const types = active.reduce((acc, t) => {
+    const k = t.type || "GENERAL";
+    acc[k] = (acc[k] || 0) + 1;
+    return acc;
+  }, {});
+  const typeLines = Object.keys(types).sort().map(k => `- ${k}: ${types[k]}`);
 
   const lanes = active.reduce((acc, t) => {
     const k = t?.arena?.lane || "UNKNOWN";
     acc[k] = (acc[k] || 0) + 1;
     return acc;
   }, {});
-
   const laneLines = Object.keys(lanes).sort().map(k => `- ${k}: ${lanes[k]}`);
 
   return [
@@ -842,8 +904,8 @@ function statsTickets(db) {
     `🟡 POTENTIAL: ${potential}`,
     `🔵 NORMAL: ${normal}`,
     ``,
-    `TOWING aktif: ${towing}`,
-    `JADWAL aktif: ${jadwal}`,
+    `Types:`,
+    ...typeLines,
     ``,
     `Arena Lanes:`,
     ...laneLines,
@@ -924,13 +986,17 @@ function isDueForFollowup(ticket) {
 }
 
 function followupFallback(ticket) {
+  const lane = String(ticket?.arena?.lane || "");
   const line1 = ticket.tag.includes("PRIORITY")
     ? "Kami follow-up sebentar ya, supaya kondisinya tidak melebar."
     : "Kami follow-up ya—kalau masih sempat, boleh lanjut sedikit infonya.";
 
-  const ask = ticket.stage <= 0
-    ? "Boleh info mobil & tahunnya, plus gejala yang paling terasa?"
-    : "Gejalanya sekarang masih sama atau ada perubahan?";
+  const ask =
+    lane === "AC"
+      ? "AC-nya sekarang dingin/tidak? Ada bunyi kompresor?"
+      : (lane === "NO_START"
+          ? "Saat distarter sekarang cekrek/lemot atau muter normal?"
+          : (ticket.stage <= 0 ? "Boleh info mobil & tahunnya, plus keluhan yang paling terasa?" : "Kondisinya masih sama atau ada perubahan?"));
 
   const action =
     ticket.type === "TOWING"
@@ -960,19 +1026,28 @@ async function followupAI(ticket) {
   catch (e) { console.error("OpenAI init failed:", e.message); return null; }
 
   const timeoutMs = Number(OPENAI_TIMEOUT_MS) || 9000;
+  const lane = String(ticket?.arena?.lane || "GENERAL");
+
+  const laneRule =
+    lane === "AC"
+      ? "Fokus AC, jangan bahas transmisi."
+      : (lane === "NO_START"
+          ? "Fokus mesin tidak hidup, jangan bahas transmisi."
+          : "Jika user mengarah ke transmisi, boleh bahas transmisi secara profesional.");
 
   const sys = `
-Anda menulis pesan follow-up WhatsApp untuk bengkel transmisi matic ${BIZ_NAME}.
+Anda menulis pesan follow-up WhatsApp untuk bengkel ${BIZ_NAME}.
 Syarat:
 - Nada ramah, manusiawi, tidak memaksa.
 - Maks 2 kalimat inti + 1 pertanyaan ringan (opsional).
+- ${laneRule}
 - Jangan menulis alamat. Jika perlu lokasi, hanya gunakan: ${MAPS_LINK}
 - Jika type=TOWING: minta share lokasi (tanpa promosi).
 - Jika GENERAL: ajak lanjut info dulu; booking hanya soft jika stage>=2.
 - Jangan menyebut sistem internal.
 `.trim();
 
-  const user = `Konteks: tag=${ticket.tag}, type=${ticket.type}, stage=${ticket.stage}, lane=${ticket?.arena?.lane}, lastMsg="${(ticket.lastBody || "").slice(0, 150)}"`;
+  const user = `Konteks: tag=${ticket.tag}, type=${ticket.type}, stage=${ticket.stage}, lane=${lane}, lastMsg="${(ticket.lastBody || "").slice(0, 150)}"`;
 
   try {
     let text = await aiTryModel(client, OPENAI_MODEL_PRIMARY, user, sys, timeoutMs);
@@ -1044,6 +1119,10 @@ async function webhookHandler(req, res) {
 
   const cmdTowing = isCommand(body, "TOWING");
   const cmdJadwal = isCommand(body, "JADWAL");
+
+  const noStart = detectNoStart(body);
+  const acMode = detectAC(body);
+
   const cantDrive = detectCantDrive(body);
   const hasLoc = !!location;
   const priceOnly = detectPriceOnly(body);
@@ -1057,6 +1136,7 @@ async function webhookHandler(req, res) {
     hasLocation: hasLoc,
     isTowingCmd: cmdTowing,
     isJadwalCmd: cmdJadwal,
+    cantDrive,
   });
   const tag = leadTag(score);
 
@@ -1068,10 +1148,15 @@ async function webhookHandler(req, res) {
 
   if (cmdJadwal) stage = Math.max(stage, 2);
   else if (scheduleAsk || buyingSignal) stage = Math.max(stage, 2);
-  else if (vInfo || sInfo) stage = Math.max(stage, 1);
-  if (vInfo && sInfo) stage = Math.max(stage, 2);
+  else if (vInfo || sInfo || acMode || noStart) stage = Math.max(stage, 1);
+  if ((vInfo && sInfo) || cmdJadwal) stage = Math.max(stage, 2);
 
-  const type = cmdJadwal ? "JADWAL" : (cmdTowing || cantDrive || hasLoc ? "TOWING" : "GENERAL");
+  // type (fixed)
+  let type = "GENERAL";
+  if (cmdJadwal) type = "JADWAL";
+  else if (acMode) type = "AC";
+  else if (noStart) type = "NO_START";
+  else if (cmdTowing || cantDrive || hasLoc) type = "TOWING";
 
   // ARENA classify
   const arenaOn = envBool(ARENA_CONTROL_ENABLED, true);
@@ -1139,6 +1224,8 @@ async function webhookHandler(req, res) {
       cantDrive ||
       cmdTowing ||
       cmdJadwal ||
+      acMode ||
+      noStart ||
       !!ticket.locationUrl ||
       (arena.lane === "URGENT") ||
       (arena.lane === "BOOKING");
@@ -1181,13 +1268,25 @@ async function webhookHandler(req, res) {
     return replyTwiML(res, reply);
   }
 
-  // RULE 2: towing / can't drive
+  // ✅ RULE AC (anti nyasar)
+  if (acMode || arena.lane === "AC") {
+    saveDB(db);
+    return replyTwiML(res, acInstruction(ticket, style));
+  }
+
+  // ✅ RULE NO_START (anti nyasar)
+  if (noStart || arena.lane === "NO_START") {
+    saveDB(db);
+    return replyTwiML(res, noStartInstruction(ticket, style));
+  }
+
+  // RULE towing / can't drive
   if (cmdTowing || cantDrive) {
     saveDB(db);
     return replyTwiML(res, towingInstruction(ticket, style));
   }
 
-  // RULE 3: jadwal
+  // RULE jadwal
   if (cmdJadwal) {
     saveDB(db);
     return replyTwiML(res, jadwalInstruction(ticket, style));
@@ -1198,7 +1297,6 @@ async function webhookHandler(req, res) {
   // ===============================
   const routing = parsePriorityRouting(PRIORITY_ROUTING);
   if (arenaOn && routing.length) {
-    // lane priority check in order (1,2,3,4)
     for (const p of routing) {
       if (p === "1" && arena.lane === "URGENT") {
         saveDB(db);
@@ -1208,18 +1306,9 @@ async function webhookHandler(req, res) {
         saveDB(db);
         return replyTwiML(res, arenaReplyBookingFast(style));
       }
-      if (p === "4" && arena.lane === "PRICE_TEST") {
-        // integrate with anti-3T3M lock system below, but allow fast response here too
-        // We keep strikes behavior so 3T can be locked.
-        // Continue to anti-3T3M section by breaking out (do not return here) if anti system is ON.
-        break;
-      }
-      if (p === "3" && arena.lane === "TECHNICAL") {
-        // Let AI handle technical (more “raja”), but keep it controlled.
-        break;
-      }
+      if (p === "4" && arena.lane === "PRICE_TEST") break;
+      if (p === "3" && arena.lane === "TECHNICAL") break;
     }
-    // LOW ENERGY fast reply
     if (arena.lane === "LOW_ENERGY") {
       saveDB(db);
       return replyTwiML(res, arenaReplyLowEnergy(style));
@@ -1235,13 +1324,14 @@ async function webhookHandler(req, res) {
   const strikesLock = Math.max(1, Number(ANTI_JEBEH_STRIKES_LOCK || 2));
 
   const det = detect3T3M(body);
-
   const hasMinInfo =
     hasVehicleInfo(body) ||
     hasSymptomInfo(body) ||
     cmdJadwal ||
     buyingSignal ||
-    hasLoc;
+    hasLoc ||
+    acMode ||
+    noStart;
 
   if (hasMinInfo) {
     ticket.priceStrike = 0;
@@ -1253,34 +1343,29 @@ async function webhookHandler(req, res) {
     if (ticket.priceStrike >= strikesLock) ticket.lockMode = true;
 
     saveDB(db);
-
-    // Arena price-test: strict lock when repeated
     return replyTwiML(res, (strictOn && ticket.lockMode) ? arenaReplyPriceLock(style) : arenaReplyPriceSoft(style));
   }
 
-  // If arena says PRICE_TEST and anti is OFF → soft price handling
   if (arenaOn && arena.lane === "PRICE_TEST" && !antiOn) {
     saveDB(db);
     return replyTwiML(res, arenaReplyPriceSoft(style));
   }
 
-  // Challenging tone: elegant authority
+  // Challenging tone: authority (but not always "transmisi")
   if (challenging) {
-    const reply = [
-      "Untuk transmisi, yang menentukan hasil itu pembacaan data + pengukuran, bukan tebak-tebakan atau ganti part dulu.",
-      "Kami handle kasus seperti ini dengan prosedur diagnosa presisi.",
-      "Boleh info mobil & tahun + gejala utama (1–2 poin) supaya saya arahkan langkah paling tepat?",
+    const base = [
+      "Yang menentukan hasil itu data + pengukuran, bukan tebak-tebakan.",
+      "Biar tepat, saya butuh info singkat: mobil & tahun + keluhan utama (1–2 poin).",
       "",
       confidenceLine(style),
       "",
       signatureShort(),
     ].join("\n");
-
     saveDB(db);
-    return replyTwiML(res, reply);
+    return replyTwiML(res, base);
   }
 
-  // DEFAULT: Human AI reply (Hybrid)
+  // DEFAULT: Human AI reply (Hybrid, lane-aware)
   const ai = await aiReply({ userText: body, ticket, style, stage, cantDrive, priceOnly });
 
   let replyText;
@@ -1292,10 +1377,11 @@ async function webhookHandler(req, res) {
     extra.push(signatureShort());
     replyText = [ai, ...extra].join("\n");
   } else {
+    const lane = String(arena.lane || "GENERAL");
     const triageQ =
-      stage <= 0
-        ? "Boleh info mobil & tahunnya, plus gejala yang paling terasa (rpm naik / jedug / telat masuk gigi)?"
-        : "Gejalanya lebih sering muncul saat dingin atau saat panas/macet?";
+      lane === "TECHNICAL"
+        ? "Boleh info mobil & tahunnya + gejala transmisi yang paling terasa (singkat)?"
+        : "Boleh info mobil & tahun + keluhan utama (singkat) biar saya arahkan langkahnya?";
 
     const softAsk =
       stage >= 2
@@ -1303,7 +1389,7 @@ async function webhookHandler(req, res) {
         : "";
 
     replyText = [
-      "Oke, saya bantu arahkan dulu ya.",
+      "Oke Bang, saya bantu arahkan dulu ya.",
       triageQ,
       (priceOnly ? "Untuk biaya tergantung penyebabnya—biar akurat, kita pastikan diagnosanya dulu." : ""),
       softAsk,
@@ -1373,7 +1459,7 @@ app.get("/", (_req, res) => {
   const arenaOn = String(ARENA_CONTROL_ENABLED).toLowerCase() === "true";
   const r = parsePriorityRouting(PRIORITY_ROUTING).join(",");
   return res.status(200).send(
-    `HONGZ AI SERVER — RAJA MEDAN FINAL — OK
+    `HONGZ AI SERVER — RAJA MEDAN FINAL (PATCHED) — OK
 ArenaControl: ${arenaOn ? "ON" : "OFF"} | PriorityRouting: ${r || "-"}
 WebhookHint: ${TWILIO_WEBHOOK_URL || "(set TWILIO_WEBHOOK_URL in Render ENV if you want)"}`
   );
@@ -1382,7 +1468,7 @@ WebhookHint: ${TWILIO_WEBHOOK_URL || "(set TWILIO_WEBHOOK_URL in Render ENV if y
 // ---------- START ----------
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
-  console.log("HONGZ AI SERVER — RAJA MEDAN FINAL — START");
+  console.log("HONGZ AI SERVER — RAJA MEDAN FINAL (PATCHED) — START");
   console.log("Listening on port:", port);
   console.log("Webhook routes: /twilio/webhook and /whatsapp/incoming");
 });
