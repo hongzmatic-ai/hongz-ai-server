@@ -1,9 +1,8 @@
 /**
- * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — FINAL
- * PATCH: ADMIN STABIL FIX + AUTOCLAIM CLEAN + BUILD SYSTEM PROMPT FIX (NO STRAY TEXT)
- * PATCH2: HARD FAIL ENV TWILIO + GLOBAL ERROR HANDLER (ANTI MACET)
+ * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — FINAL (AUDITED)
+ * PATCH: Persistent-ready + Optional Twilio Signature Validation + ENV sanity
  *
- * NOTE DEPENDENCY (package.json):
+ * DEPENDENCY (package.json):
  *   "express", "body-parser", "twilio", "openai"
  *   OpenAI: "openai": "^4.0.0"
  */
@@ -14,14 +13,6 @@ const twilio = require("twilio");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-
-// ---------- GLOBAL ERROR HANDLER (ANTI MACET) ----------
-process.on("unhandledRejection", (err) => {
-  console.error("🔥 UNHANDLED REJECTION:", err?.message || err);
-});
-process.on("uncaughtException", (err) => {
-  console.error("🔥 UNCAUGHT EXCEPTION:", err?.message || err);
-});
 
 // OpenAI (optional) — support openai v4 exports
 let OpenAI = null;
@@ -38,6 +29,11 @@ const {
   TWILIO_AUTH_TOKEN,
   TWILIO_WHATSAPP_FROM,
   ADMIN_WHATSAPP_TO,
+
+  // ✅ Security (recommended for production)
+  TWILIO_VALIDATE_SIGNATURE = "false",
+  // must match your public webhook URL exactly
+  TWILIO_WEBHOOK_URL = "",
 
   // RADAR MONITOR
   MONITOR_WHATSAPP_TO = "",
@@ -105,12 +101,31 @@ function envBool(v, def = false) {
   return String(v).toLowerCase() === "true";
 }
 
-// ✅ HARD FAIL jika ENV Twilio wajib kosong (biar tidak deploy setengah hidup)
-if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !ADMIN_WHATSAPP_TO) {
-  console.error("❌ Missing ENV: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, ADMIN_WHATSAPP_TO");
-  process.exit(1);
+// ---------- SANITY ----------
+function envWarn(msg) {
+  console.warn("⚠️", msg);
+}
+function envOk(msg) {
+  console.log("✅", msg);
 }
 
+if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !ADMIN_WHATSAPP_TO) {
+  console.error("❌ Missing ENV: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, ADMIN_WHATSAPP_TO");
+} else {
+  envOk("Twilio core ENV loaded.");
+}
+
+if (envBool(TWILIO_VALIDATE_SIGNATURE, false) && !TWILIO_WEBHOOK_URL) {
+  envWarn("TWILIO_VALIDATE_SIGNATURE=true but TWILIO_WEBHOOK_URL is empty. Validation will reject requests.");
+}
+
+if (!OPENAI_API_KEY || !OpenAI) {
+  envWarn("OpenAI not active (OPENAI_API_KEY missing or openai package not available). Bot will use fallback replies.");
+} else {
+  envOk(`OpenAI ready. Primary=${OPENAI_MODEL_PRIMARY}, Fallback=${OPENAI_MODEL_FALLBACK}`);
+}
+
+// ---------- TWILIO CLIENT ----------
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
 // ---------- APP ----------
@@ -123,6 +138,9 @@ function ensureDir(dir) {
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
 }
 ensureDir(DATA_DIR);
+
+// ✅ NOTE: On Render, /tmp may be cleared on restart.
+// For persistence, mount a disk and set DATA_DIR to that disk path (e.g., /var/data).
 const DB_FILE = path.join(DATA_DIR, "hongz_enterprise_db.json");
 
 function loadDB() {
@@ -184,6 +202,27 @@ function isMonitor(from) {
   const m = normalizeFrom(MONITOR_WHATSAPP_TO).toLowerCase();
   const f = normalizeFrom(from).toLowerCase();
   return !!(m && f && m === f);
+}
+
+// ---------- OPTIONAL: TWILIO SIGNATURE VALIDATION ----------
+function validateTwilioRequest(req) {
+  if (!envBool(TWILIO_VALIDATE_SIGNATURE, false)) return true;
+
+  const signature = req.headers["x-twilio-signature"];
+  const url = String(TWILIO_WEBHOOK_URL || "").trim();
+  if (!signature || !url) return false;
+
+  // Twilio signs the original POST params (req.body for form-encoded)
+  try {
+    return twilio.validateRequest(
+      TWILIO_AUTH_TOKEN,
+      signature,
+      url,
+      req.body || {}
+    );
+  } catch (_) {
+    return false;
+  }
 }
 
 // ---------- AUTO CLAIM (global) ----------
@@ -654,6 +693,13 @@ FORMAT JAWABAN:
 - 1 paragraf analisa singkat yang meyakinkan & menenangkan (tanpa nakut-nakutin)
 - lalu 1–2 pertanyaan triase (jika perlu)
 - jangan tulis signature panjang (server yang tambah)
+
+Tujuan:
+Membuat calon pelanggan merasa:
+✔ Ditangani oleh ahli
+✔ Tidak digurui
+✔ Tidak ditekan
+✔ Percaya untuk lanjut
 `.trim();
 }
 
@@ -899,6 +945,12 @@ Syarat:
 
 // ---------- MAIN WEBHOOK HANDLER ----------
 async function webhookHandler(req, res) {
+  // ✅ Security gate (optional)
+  if (!validateTwilioRequest(req)) {
+    console.error("❌ Twilio signature validation failed.");
+    return res.status(403).send("Forbidden");
+  }
+
   const db = loadDB();
 
   const from = normalizeFrom(req.body.From || "");
@@ -1258,9 +1310,7 @@ app.get("/cron/followup", async (req, res) => {
 
 // ---------- HEALTH ----------
 app.get("/", (_req, res) =>
-  res
-    .status(200)
-    .send("HONGZ AI SERVER — HYBRID C+ ELITE (ADMIN STABIL + RADAR + ANTI 3T3M + AUTOCLAIM CLEAN + ANTI MACET) — OK")
+  res.status(200).send("HONGZ AI SERVER — HYBRID C+ ELITE (AUDITED: Signature Validation + Persistent-ready) — OK")
 );
 
 // ---------- START ----------
@@ -1269,4 +1319,5 @@ app.listen(port, () => {
   console.log("HONGZ AI SERVER — HYBRID C+ ELITE — START");
   console.log("Listening on port:", port);
   console.log("Webhook routes: /twilio/webhook and /whatsapp/incoming");
+  console.log("DB file:", DB_FILE);
 });
