@@ -50,11 +50,21 @@ const {
   ANTI_JEBEH_STRIKES_LOCK = "2",
   ANTI_JEBEH_MIN_INFO_REQUIRED = "true",
 
-  // AI (Hybrid)
+  // AI (Hybrid + Ultra Cost Control)
   OPENAI_API_KEY,
-  OPENAI_MODEL_PRIMARY = "gpt-4o",
-  OPENAI_MODEL_FALLBACK = "gpt-4o-mini",
+
+  // ✅ COST: default hemat, naik kelas hanya jika perlu
+  OPENAI_MODEL_ECO = "gpt-4o-mini",
+  OPENAI_MODEL_PRO = "gpt-4o",
+
+  // kompatibilitas (kalau Papa sudah set lama)
+  OPENAI_MODEL_PRIMARY = process.env.OPENAI_MODEL_PRIMARY || "gpt-4o",
+  OPENAI_MODEL_FALLBACK = process.env.OPENAI_MODEL_FALLBACK || "gpt-4o-mini",
+
+  // ✅ token & timeout control (hemat biaya)
   OPENAI_TIMEOUT_MS = "9000",
+  OPENAI_MAX_OUTPUT_TOKENS = "260",
+  OPENAI_TEMPERATURE = "0.30",
 
   // ARENA CONTROL MODE
   ARENA_CONTROL_ENABLED = "true",
