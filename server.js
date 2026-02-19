@@ -271,7 +271,7 @@ function scarcityLine(ticket) {
 
 // ---------- LEAD SCORING ----------
 function detectPremium(body) {
-  return /land cruiser|alphard|vellfire|lexus|bmw|mercedes|benz|audi|porsche|range rover|land rover|prado|lc200|lc300|rx350|mini cooper/i.test(body);
+  return /land cruiser|alphard|vellfire|lexus|bmw|mercedes|benz|audi|porsche|range rover|land rover|prado|lc200|lc300|rx350|mini cooper|ferari|laborghini/i.test(body);
 }
 function detectCantDrive(body) {
   return /tidak bisa jalan|ga bisa jalan|gak bisa jalan|mogok|stuck|macet total|selip parah|rpm naik tapi tidak jalan|masuk d.*tidak jalan|masuk r.*tidak jalan|berisiko|darurat|tidak bisa hidup|gak bisa hidup|ga bisa hidup/i.test(body);
