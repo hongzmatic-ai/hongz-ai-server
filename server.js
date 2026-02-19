@@ -303,7 +303,7 @@ function detectStyle(body) {
   const low = t.toLowerCase();
 
   const panic = /darurat|tolong|cepat|mogok|tidak bisa|gak bisa|ga bisa|stuck|bahaya/i.test(low);
-  const formal = /mohon|berkenan|apabila|dengan hormat|terima kasih|pak|bu|bapak|ibu/i.test(low);
+  const formal = /mohon|berkenan|apabila|dengan hormat|terima kasih|pak|bu|bapak|ibu|tuan|nyonya|ringankan langkah/i.test(low);
   const hasEmoji = /[\u{1F300}-\u{1FAFF}]/u.test(t);
   const short = low.length <= 18;
 
