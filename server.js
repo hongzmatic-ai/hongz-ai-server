@@ -812,7 +812,6 @@ async function aiTryModel(client, model, userText, sysPrompt, timeoutMs) {
       model,
 temperature: Number(OPENAI_TEMPERATURE || 0.30),
 max_tokens: Number(OPENAI_MAX_OUTPUT_TOKENS || 260),
-
       ],
     }),
     timeoutMs,
