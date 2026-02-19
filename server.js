@@ -809,11 +809,14 @@ FORMAT JAWABAN:
 async function aiTryModel(client, model, userText, sysPrompt, timeoutMs) {
   const resp = await withTimeout(
     client.chat.completions.create({
-      model,
-temperature: Number(OPENAI_TEMPERATURE || 0.30),
-max_tokens: Number(OPENAI_MAX_OUTPUT_TOKENS || 260),
-      ],
-    }),
+  model,
+  temperature: Number(OPENAI_TEMPERATURE || 0.30),
+  max_tokens: Number(OPENAI_MAX_OUTPUT_TOKENS || 260),
+  messages: [
+    { role: "system", content: sysPrompt },
+    { role: "user", content: userText },
+  ],
+})
     timeoutMs,
     `OPENAI_TIMEOUT_${model}`
   );
