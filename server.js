@@ -1,6 +1,6 @@
 /**
- * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — FINAL (AUDITED)
- * PATCH: Persistent-ready + Optional Twilio Signature Validation + ENV sanity
+ * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — RAJA MEDAN FINAL
+ * ✅ PATCH: ARENA CONTROL MODE + PRIORITY ROUTING 1.2.3.4 + ADMIN STABIL + RADAR + ANTI 3T3M + AUTOCLAIM CLEAN
  *
  * DEPENDENCY (package.json):
  *   "express", "body-parser", "twilio", "openai"
@@ -30,9 +30,7 @@ const {
   TWILIO_WHATSAPP_FROM,
   ADMIN_WHATSAPP_TO,
 
-  // ✅ Security (recommended for production)
-  TWILIO_VALIDATE_SIGNATURE = "false",
-  // must match your public webhook URL exactly
+  // (Optional, for documentation/health)
   TWILIO_WEBHOOK_URL = "",
 
   // RADAR MONITOR
@@ -57,6 +55,11 @@ const {
   OPENAI_MODEL_PRIMARY = "gpt-4o",
   OPENAI_MODEL_FALLBACK = "gpt-4o-mini",
   OPENAI_TIMEOUT_MS = "9000",
+
+  // ARENA CONTROL MODE
+  ARENA_CONTROL_ENABLED = "true",
+  PRIORITY_ROUTING = "1,2,3,4", // 1 URGENT | 2 BOOKING | 3 TECHNICAL | 4 PRICE TEST
+  ARENA_MAX_QUESTIONS = "2",
 
   // towing style: 1=ideal, 2=super singkat, 3=kepala bengkel premium
   TOWING_STYLE = "3",
@@ -101,31 +104,10 @@ function envBool(v, def = false) {
   return String(v).toLowerCase() === "true";
 }
 
-// ---------- SANITY ----------
-function envWarn(msg) {
-  console.warn("⚠️", msg);
-}
-function envOk(msg) {
-  console.log("✅", msg);
-}
-
 if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !ADMIN_WHATSAPP_TO) {
   console.error("❌ Missing ENV: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, ADMIN_WHATSAPP_TO");
-} else {
-  envOk("Twilio core ENV loaded.");
 }
 
-if (envBool(TWILIO_VALIDATE_SIGNATURE, false) && !TWILIO_WEBHOOK_URL) {
-  envWarn("TWILIO_VALIDATE_SIGNATURE=true but TWILIO_WEBHOOK_URL is empty. Validation will reject requests.");
-}
-
-if (!OPENAI_API_KEY || !OpenAI) {
-  envWarn("OpenAI not active (OPENAI_API_KEY missing or openai package not available). Bot will use fallback replies.");
-} else {
-  envOk(`OpenAI ready. Primary=${OPENAI_MODEL_PRIMARY}, Fallback=${OPENAI_MODEL_FALLBACK}`);
-}
-
-// ---------- TWILIO CLIENT ----------
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
 // ---------- APP ----------
@@ -138,9 +120,6 @@ function ensureDir(dir) {
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
 }
 ensureDir(DATA_DIR);
-
-// ✅ NOTE: On Render, /tmp may be cleared on restart.
-// For persistence, mount a disk and set DATA_DIR to that disk path (e.g., /var/data).
 const DB_FILE = path.join(DATA_DIR, "hongz_enterprise_db.json");
 
 function loadDB() {
@@ -202,27 +181,6 @@ function isMonitor(from) {
   const m = normalizeFrom(MONITOR_WHATSAPP_TO).toLowerCase();
   const f = normalizeFrom(from).toLowerCase();
   return !!(m && f && m === f);
-}
-
-// ---------- OPTIONAL: TWILIO SIGNATURE VALIDATION ----------
-function validateTwilioRequest(req) {
-  if (!envBool(TWILIO_VALIDATE_SIGNATURE, false)) return true;
-
-  const signature = req.headers["x-twilio-signature"];
-  const url = String(TWILIO_WEBHOOK_URL || "").trim();
-  if (!signature || !url) return false;
-
-  // Twilio signs the original POST params (req.body for form-encoded)
-  try {
-    return twilio.validateRequest(
-      TWILIO_AUTH_TOKEN,
-      signature,
-      url,
-      req.body || {}
-    );
-  } catch (_) {
-    return false;
-  }
 }
 
 // ---------- AUTO CLAIM (global) ----------
@@ -382,7 +340,7 @@ function detectChallengingTone(body) {
 }
 function detectBuyingSignal(body) {
   const t = String(body || "").toLowerCase();
-  return /kapan bisa|besok bisa|hari ini bisa|bisa masuk|siap datang|jam berapa|jam buka|alamat dimana|lokasi dimana|maps|alamat|lokasi/i.test(t);
+  return /kapan bisa|besok bisa|hari ini bisa|bisa masuk|siap datang|jam berapa|jam buka|alamat dimana|lokasi dimana|maps|alamat|lokasi|antri|slot/i.test(t);
 }
 
 // ---------- STAGE ----------
@@ -395,7 +353,7 @@ function hasVehicleInfo(body) {
 }
 function hasSymptomInfo(body) {
   const t = String(body || "").toLowerCase();
-  return /rpm|selip|jedug|hentak|telat|ngelos|overheat|bau|getar|gigi|d|r|n|p|nyentak|delay|slip|noise|bunyi|bocor|tidak bisa jalan|tidak bisa hidup|macet|stuck/i.test(t);
+  return /rpm|selip|jedug|hentak|telat|ngelos|overheat|bau|getar|gigi|d|r|n|p|nyentak|delay|slip|noise|bunyi|bocor|getar|tidak bisa jalan|tidak bisa hidup|macet|stuck/i.test(t);
 }
 function askedForSchedule(body) {
   return /kapan bisa masuk|jadwal|booking|bisa hari|bisa jam|kapan bisa datang|antri|slot/i.test(String(body || "").toLowerCase());
@@ -477,6 +435,7 @@ function getOrCreateTicket(db, customerId, from) {
     lastAdminNotifyAtMs: 0,
     priceStrike: 0,
     lockMode: false,
+    arena: { lane: "UNKNOWN", reason: "" },
   };
 
   db.tickets[tid] = ticket;
@@ -493,6 +452,7 @@ async function notifyAdmin({ title, ticket, reason, body, locationUrl }) {
   const msg = [
     title,
     `Ticket: ${ticket.id} (${ticket.tag} | Score ${ticket.score}/10 | stage:${ticket.stage} | ${ticket.type})`,
+    `Lane: ${ticket?.arena?.lane || "-"} ${ticket?.arena?.reason ? `(${ticket.arena.reason})` : ""}`,
     `Customer: ${ticket.from}`,
     `Nomor: ${ticket.msisdn}`,
     `wa.me: ${ticket.waMe}`,
@@ -536,6 +496,7 @@ async function notifyMonitor({ title, ticket, body }) {
   const msg = [
     title,
     `Ticket: ${ticket.id} | ${ticket.tag} | score:${ticket.score}/10 | stage:${ticket.stage} | ${ticket.type}`,
+    `Lane: ${ticket?.arena?.lane || "-"} ${ticket?.arena?.reason ? `(${ticket.arena.reason})` : ""}`,
     `From: ${ticket.msisdn}`,
     `wa.me: ${ticket.waMe}`,
     ticket.locationUrl ? `Lokasi: ${ticket.locationUrl}` : null,
@@ -623,6 +584,89 @@ function jadwalInstruction(_ticket, humanStyle) {
   return lines.join("\n");
 }
 
+// ===============================
+// ARENA CONTROL MODE (Priority Routing 1.2.3.4)
+// ===============================
+function parsePriorityRouting(csv) {
+  const arr = String(csv || "1,2,3,4").split(",").map(s => s.trim()).filter(Boolean);
+  const valid = new Set(["1","2","3","4"]);
+  return arr.filter(x => valid.has(x));
+}
+
+function isLowEnergy(body) {
+  const t = String(body || "").trim().toLowerCase();
+  if (!t) return true;
+  if (t.length <= 2) return true;
+  return /^(p|halo|hai|test|tes|cek|cek\stest|\?)$/.test(t);
+}
+
+// lane classifier (based on Papa's 1.2.3.4)
+function arenaClassify({ body, hasLoc, cantDrive, cmdTowing, cmdJadwal, buyingSignal, scheduleAsk, priceOnly, vInfo, sInfo, suspicious }) {
+  // LANE 1: URGENT (towing / cant drive / location)
+  if (hasLoc || cantDrive || cmdTowing) return { lane: "URGENT", reason: hasLoc ? "HAS_LOCATION" : (cantDrive ? "CANT_DRIVE" : "TOWING_CMD") };
+
+  // LANE 2: BOOKING
+  if (cmdJadwal || scheduleAsk || buyingSignal) return { lane: "BOOKING", reason: cmdJadwal ? "JADWAL_CMD" : "ASK_SCHEDULE" };
+
+  // LANE 4: PRICE TEST (before technical)
+  if (priceOnly || suspicious) return { lane: "PRICE_TEST", reason: priceOnly ? "PRICE_ONLY" : "SUSPICIOUS" };
+
+  // LANE 3: TECHNICAL
+  if (vInfo || sInfo) return { lane: "TECHNICAL", reason: (vInfo && sInfo) ? "VEHICLE+SYMPTOM" : (vInfo ? "VEHICLE_INFO" : "SYMPTOM_INFO") };
+
+  // fallback
+  if (isLowEnergy(body)) return { lane: "LOW_ENERGY", reason: "LOW_SIGNAL" };
+  return { lane: "GENERAL", reason: "DEFAULT" };
+}
+
+// quick lane replies (Arena Control)
+function arenaReplyLowEnergy(style) {
+  return [
+    "Siap Bang. Biar saya arahkan cepat ya—mobilnya apa & tahun berapa?",
+    "Gejalanya singkat saja: *rpm naik / jedug / telat masuk gigi / selip*?",
+    "",
+    confidenceLine(style),
+    "",
+    signatureShort(),
+  ].join("\n");
+}
+
+function arenaReplyPriceSoft(style) {
+  return [
+    "Untuk biaya, tergantung hasil diagnosa karena penyebab tiap unit bisa berbeda—jadi kami hindari tebak-tebakan.",
+    "Boleh info *mobil & tahun* + *gejala utama* (1 kalimat) biar saya arahkan langkah paling tepat?",
+    "",
+    confidenceLine(style),
+    "",
+    signatureShort(),
+  ].join("\n");
+}
+
+function arenaReplyPriceLock(style) {
+  return [
+    "Untuk harga yang akurat, kami tidak bisa tebak-tebakan tanpa diagnosa.",
+    "Mohon kirim *Mobil + Tahun + Gejala utama* (1 kalimat saja).",
+    "Kalau sudah siap datang, ketik *JADWAL* biar kami amankan slot cek.",
+    "",
+    confidenceLine(style),
+    "",
+    signatureShort(),
+  ].join("\n");
+}
+
+function arenaReplyBookingFast(style) {
+  return [
+    "Siap. Untuk amankan slot, kirim data singkat ya:",
+    "1) Nama  2) Mobil & tahun  3) Keluhan utama  4) Rencana datang (hari & jam)",
+    "",
+    "Setelah data masuk, admin konfirmasi slot & estimasi waktu pengecekan.",
+    "",
+    confidenceLine(style),
+    "",
+    signatureShort(),
+  ].join("\n");
+}
+
 // ---------- AI HELPERS ----------
 function withTimeout(promise, ms, label = "TIMEOUT") {
   return Promise.race([
@@ -651,29 +695,26 @@ function closingPolicy(stage, ticketType, userText) {
   return "boleh ajak booking lebih jelas tapi tetap soft (tanpa ancaman/menakut-nakuti).";
 }
 
+/**
+ * buildSystemPrompt (clean, no stray text)
+ */
 function buildSystemPrompt({ style, stage, ticket, userText, cantDrive, priceOnly }) {
   const tone = composeTone(style);
   const policy = closingPolicy(stage, ticket.type, userText);
+  const maxQ = Math.max(1, Number(ARENA_MAX_QUESTIONS || 2));
 
   return `
 Anda adalah Kepala Bengkel ${BIZ_NAME} di Medan.
 Spesialis transmisi matic dengan pengalaman nyata di lapangan.
 
 Gaya bahasa: ${tone}.
-Harus terasa seperti mekanik senior/kepala bengkel (bukan CS jual tiket).
-
-Kepribadian:
-- Tegas tapi disukai
-- Profesional, bukan sales
-- Tidak defensif
-- Tidak emosional
-- Berbicara seperti mekanik senior, bukan CS
+Harus terasa seperti mekanik senior/kepala bengkel (bukan CS).
 
 ATURAN WAJIB:
 1) Jangan pernah beri angka harga pasti.
 2) Jika user hanya tanya harga tanpa info → arahkan ke diagnosa, bukan debat.
 3) Jangan terdengar memaksa booking. Ikuti policy di bawah.
-4) Maksimal 2 pertanyaan dalam satu balasan.
+4) Maksimal ${maxQ} pertanyaan dalam satu balasan.
 5) Jangan mengarang alamat. Jika ditanya lokasi, jawab hanya link ini: ${MAPS_LINK}
 6) Jika unit tidak bisa jalan/berisiko → sarankan jangan dipaksakan + minta share lokasi.
 7) Jangan merendahkan bengkel lain, tapi tampilkan wibawa profesional.
@@ -682,24 +723,18 @@ ATURAN WAJIB:
 KONTEKS TICKET:
 - Tag: ${ticket.tag}
 - Type: ${ticket.type}
-- Stage: ${stage} (0 baru ngobrol, 1 mulai ada info, 2 siap diarahkan)
+- Stage: ${stage}
 - cantDrive: ${cantDrive}
 - priceOnly: ${priceOnly}
+- ArenaLane: ${ticket?.arena?.lane || "-"}
 
 POLICY CLOSING:
 - ${policy}
 
 FORMAT JAWABAN:
-- 1 paragraf analisa singkat yang meyakinkan & menenangkan (tanpa nakut-nakutin)
-- lalu 1–2 pertanyaan triase (jika perlu)
+- 1 paragraf analisa singkat (meyakinkan & menenangkan)
+- lalu 1–${maxQ} pertanyaan triase (jika perlu)
 - jangan tulis signature panjang (server yang tambah)
-
-Tujuan:
-Membuat calon pelanggan merasa:
-✔ Ditangani oleh ahli
-✔ Tidak digurui
-✔ Tidak ditekan
-✔ Percaya untuk lanjut
 `.trim();
 }
 
@@ -775,7 +810,8 @@ function listTickets(db) {
   const lines = ["📋 Tiket Aktif (Top 12):"];
   for (const t of active) {
     const shortMsg = (t.lastBody || "").replace(/\s+/g, " ").slice(0, 28);
-    lines.push(`${t.id} | ${t.tag} | ${t.status} | ${t.msisdn} | ${t.type} | stage:${t.stage} | ${t.locationUrl ? "📍" : "-"} | ${shortMsg}`);
+    const lane = t?.arena?.lane ? ` | lane:${t.arena.lane}` : "";
+    lines.push(`${t.id} | ${t.tag} | ${t.status} | ${t.msisdn} | ${t.type} | stage:${t.stage}${lane} | ${t.locationUrl ? "📍" : "-"} | ${shortMsg}`);
   }
   lines.push("");
   lines.push("Ketik: CLAIM T-xxxxx / CLOSE T-xxxxx / NOTE T-xxxxx ...");
@@ -791,6 +827,14 @@ function statsTickets(db) {
   const towing = active.filter(t => t.type === "TOWING").length;
   const jadwal = active.filter(t => t.type === "JADWAL").length;
 
+  const lanes = active.reduce((acc, t) => {
+    const k = t?.arena?.lane || "UNKNOWN";
+    acc[k] = (acc[k] || 0) + 1;
+    return acc;
+  }, {});
+
+  const laneLines = Object.keys(lanes).sort().map(k => `- ${k}: ${lanes[k]}`);
+
   return [
     `📊 HONGZ SUMMARY`,
     `Aktif: ${active.length}`,
@@ -800,6 +844,9 @@ function statsTickets(db) {
     ``,
     `TOWING aktif: ${towing}`,
     `JADWAL aktif: ${jadwal}`,
+    ``,
+    `Arena Lanes:`,
+    ...laneLines,
   ].join("\n");
 }
 
@@ -821,7 +868,7 @@ function handleAdminCommand(db, body) {
     if (!ticket) return `Ticket ${id} tidak ditemukan.`;
     ticket.status = "CLAIMED";
     ticket.updatedAt = nowISO();
-    return `✅ ${ticket.id} di-CLAIM.\nCustomer: ${ticket.from}\nNomor: ${ticket.msisdn}\nwa.me: ${ticket.waMe}\nLokasi: ${ticket.locationUrl || "(belum ada)"}`;
+    return `✅ ${ticket.id} di-CLAIM.\nCustomer: ${ticket.from}\nNomor: ${ticket.msisdn}\nwa.me: ${ticket.waMe}\nLokasi: ${ticket.locationUrl || "(belum ada)"}\nLane: ${ticket?.arena?.lane || "-"}`;
   }
 
   if (t.startsWith("CLOSE ")) {
@@ -925,7 +972,7 @@ Syarat:
 - Jangan menyebut sistem internal.
 `.trim();
 
-  const user = `Konteks: tag=${ticket.tag}, type=${ticket.type}, stage=${ticket.stage}, lastMsg="${(ticket.lastBody || "").slice(0, 150)}"`;
+  const user = `Konteks: tag=${ticket.tag}, type=${ticket.type}, stage=${ticket.stage}, lane=${ticket?.arena?.lane}, lastMsg="${(ticket.lastBody || "").slice(0, 150)}"`;
 
   try {
     let text = await aiTryModel(client, OPENAI_MODEL_PRIMARY, user, sys, timeoutMs);
@@ -945,12 +992,6 @@ Syarat:
 
 // ---------- MAIN WEBHOOK HANDLER ----------
 async function webhookHandler(req, res) {
-  // ✅ Security gate (optional)
-  if (!validateTwilioRequest(req)) {
-    console.error("❌ Twilio signature validation failed.");
-    return res.status(403).send("Forbidden");
-  }
-
   const db = loadDB();
 
   const from = normalizeFrom(req.body.From || "");
@@ -1032,6 +1073,12 @@ async function webhookHandler(req, res) {
 
   const type = cmdJadwal ? "JADWAL" : (cmdTowing || cantDrive || hasLoc ? "TOWING" : "GENERAL");
 
+  // ARENA classify
+  const arenaOn = envBool(ARENA_CONTROL_ENABLED, true);
+  const arena = arenaOn
+    ? arenaClassify({ body, hasLoc, cantDrive, cmdTowing, cmdJadwal, buyingSignal, scheduleAsk, priceOnly, vInfo, sInfo, suspicious })
+    : { lane: "OFF", reason: "DISABLED" };
+
   updateTicket(ticket, {
     lastBody: body,
     lastInboundAtMs: nowMs(),
@@ -1041,6 +1088,7 @@ async function webhookHandler(req, res) {
     msisdn: cleanMsisdn(from),
     type,
     stage,
+    arena,
   });
 
   // AUTO CLAIM (global)
@@ -1061,6 +1109,8 @@ async function webhookHandler(req, res) {
     score,
     tag,
     locationUrl: ticket.locationUrl || "",
+    lane: arena.lane,
+    laneReason: arena.reason,
   });
   if (db.events.length > 5000) db.events = db.events.slice(-2000);
 
@@ -1089,7 +1139,9 @@ async function webhookHandler(req, res) {
       cantDrive ||
       cmdTowing ||
       cmdJadwal ||
-      !!ticket.locationUrl;
+      !!ticket.locationUrl ||
+      (arena.lane === "URGENT") ||
+      (arena.lane === "BOOKING");
 
     if (!adminEqMon && shouldNotifyAdmin && cooldownOk) {
       ticket.lastAdminNotifyAtMs = now;
@@ -1101,6 +1153,18 @@ async function webhookHandler(req, res) {
         locationUrl: ticket.locationUrl || "",
       });
     }
+  }
+
+  // RULE 0: address question -> only MAPS_LINK
+  if (/alamat|lokasi|maps|map|di mana|dimana/i.test(body)) {
+    saveDB(db);
+    const reply = [
+      `Untuk lokasi, silakan buka: ${MAPS_LINK}`,
+      confidenceLine(style),
+      "",
+      signatureShort(),
+    ].join("\n");
+    return replyTwiML(res, reply);
   }
 
   // RULE 1: location received -> reply cepat
@@ -1129,16 +1193,37 @@ async function webhookHandler(req, res) {
     return replyTwiML(res, jadwalInstruction(ticket, style));
   }
 
-  // RULE 4: address question -> only MAPS_LINK
-  if (/alamat|lokasi|maps|map|di mana|dimana/i.test(body)) {
-    saveDB(db);
-    const reply = [
-      `Untuk lokasi, silakan buka: ${MAPS_LINK}`,
-      confidenceLine(style),
-      "",
-      signatureShort(),
-    ].join("\n");
-    return replyTwiML(res, reply);
+  // ===============================
+  // ARENA CONTROL MODE (Priority Routing 1.2.3.4)
+  // ===============================
+  const routing = parsePriorityRouting(PRIORITY_ROUTING);
+  if (arenaOn && routing.length) {
+    // lane priority check in order (1,2,3,4)
+    for (const p of routing) {
+      if (p === "1" && arena.lane === "URGENT") {
+        saveDB(db);
+        return replyTwiML(res, towingInstruction(ticket, style));
+      }
+      if (p === "2" && arena.lane === "BOOKING") {
+        saveDB(db);
+        return replyTwiML(res, arenaReplyBookingFast(style));
+      }
+      if (p === "4" && arena.lane === "PRICE_TEST") {
+        // integrate with anti-3T3M lock system below, but allow fast response here too
+        // We keep strikes behavior so 3T can be locked.
+        // Continue to anti-3T3M section by breaking out (do not return here) if anti system is ON.
+        break;
+      }
+      if (p === "3" && arena.lane === "TECHNICAL") {
+        // Let AI handle technical (more “raja”), but keep it controlled.
+        break;
+      }
+    }
+    // LOW ENERGY fast reply
+    if (arena.lane === "LOW_ENERGY") {
+      saveDB(db);
+      return replyTwiML(res, arenaReplyLowEnergy(style));
+    }
   }
 
   // ===============================
@@ -1169,42 +1254,17 @@ async function webhookHandler(req, res) {
 
     saveDB(db);
 
-    const replySoft = [
-      "Untuk biaya, tergantung hasil diagnosa karena penyebab tiap unit bisa berbeda.",
-      "Boleh info *mobil & tahun* + *gejala utama* (contoh: rpm naik / jedug / telat masuk gigi)?",
-      "",
-      confidenceLine(style),
-      "",
-      signatureShort(),
-    ].join("\n");
-
-    const replyLock = [
-      "Untuk harga yang akurat, kami tidak bisa tebak-tebakan tanpa diagnosa.",
-      "Mohon kirim *Mobil + Tahun + Gejala utama* (1 kalimat saja).",
-      "Kalau sudah siap datang, ketik *JADWAL* biar kami amankan slot cek.",
-      "",
-      confidenceLine(style),
-      "",
-      signatureShort(),
-    ].join("\n");
-
-    return replyTwiML(res, (strictOn && ticket.lockMode) ? replyLock : replySoft);
+    // Arena price-test: strict lock when repeated
+    return replyTwiML(res, (strictOn && ticket.lockMode) ? arenaReplyPriceLock(style) : arenaReplyPriceSoft(style));
   }
 
-  if (!antiOn && suspicious && stage === 0) {
-    const reply = [
-      "Untuk biaya biasanya tergantung hasil diagnosa, karena tiap unit & penyebabnya bisa berbeda.",
-      "Boleh info mobil & tahunnya dulu, plus gejala singkat yang paling terasa?",
-      "",
-      confidenceLine(style),
-      "",
-      signatureShort(),
-    ].join("\n");
-
+  // If arena says PRICE_TEST and anti is OFF → soft price handling
+  if (arenaOn && arena.lane === "PRICE_TEST" && !antiOn) {
     saveDB(db);
-    return replyTwiML(res, reply);
+    return replyTwiML(res, arenaReplyPriceSoft(style));
   }
 
+  // Challenging tone: elegant authority
   if (challenging) {
     const reply = [
       "Untuk transmisi, yang menentukan hasil itu pembacaan data + pengukuran, bukan tebak-tebakan atau ganti part dulu.",
@@ -1309,15 +1369,20 @@ app.get("/cron/followup", async (req, res) => {
 });
 
 // ---------- HEALTH ----------
-app.get("/", (_req, res) =>
-  res.status(200).send("HONGZ AI SERVER — HYBRID C+ ELITE (AUDITED: Signature Validation + Persistent-ready) — OK")
-);
+app.get("/", (_req, res) => {
+  const arenaOn = String(ARENA_CONTROL_ENABLED).toLowerCase() === "true";
+  const r = parsePriorityRouting(PRIORITY_ROUTING).join(",");
+  return res.status(200).send(
+    `HONGZ AI SERVER — RAJA MEDAN FINAL — OK
+ArenaControl: ${arenaOn ? "ON" : "OFF"} | PriorityRouting: ${r || "-"}
+WebhookHint: ${TWILIO_WEBHOOK_URL || "(set TWILIO_WEBHOOK_URL in Render ENV if you want)"}`
+  );
+});
 
 // ---------- START ----------
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
-  console.log("HONGZ AI SERVER — HYBRID C+ ELITE — START");
+  console.log("HONGZ AI SERVER — RAJA MEDAN FINAL — START");
   console.log("Listening on port:", port);
   console.log("Webhook routes: /twilio/webhook and /whatsapp/incoming");
-  console.log("DB file:", DB_FILE);
 });
