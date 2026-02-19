@@ -1,6 +1,7 @@
 /**
  * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — FINAL
  * PATCH: ADMIN STABIL FIX + AUTOCLAIM CLEAN + BUILD SYSTEM PROMPT FIX (NO STRAY TEXT)
+ * PATCH2: HARD FAIL ENV TWILIO + GLOBAL ERROR HANDLER (ANTI MACET)
  *
  * NOTE DEPENDENCY (package.json):
  *   "express", "body-parser", "twilio", "openai"
@@ -13,6 +14,14 @@ const twilio = require("twilio");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+
+// ---------- GLOBAL ERROR HANDLER (ANTI MACET) ----------
+process.on("unhandledRejection", (err) => {
+  console.error("🔥 UNHANDLED REJECTION:", err?.message || err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION:", err?.message || err);
+});
 
 // OpenAI (optional) — support openai v4 exports
 let OpenAI = null;
@@ -96,8 +105,10 @@ function envBool(v, def = false) {
   return String(v).toLowerCase() === "true";
 }
 
+// ✅ HARD FAIL jika ENV Twilio wajib kosong (biar tidak deploy setengah hidup)
 if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !ADMIN_WHATSAPP_TO) {
   console.error("❌ Missing ENV: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, ADMIN_WHATSAPP_TO");
+  process.exit(1);
 }
 
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
@@ -601,10 +612,6 @@ function closingPolicy(stage, ticketType, userText) {
   return "boleh ajak booking lebih jelas tapi tetap soft (tanpa ancaman/menakut-nakuti).";
 }
 
-/**
- * ✅ FIX UTAMA:
- * buildSystemPrompt hanya satu versi, rapi, dan TIDAK ADA teks nyasar di luar function.
- */
 function buildSystemPrompt({ style, stage, ticket, userText, cantDrive, priceOnly }) {
   const tone = composeTone(style);
   const policy = closingPolicy(stage, ticket.type, userText);
@@ -647,13 +654,6 @@ FORMAT JAWABAN:
 - 1 paragraf analisa singkat yang meyakinkan & menenangkan (tanpa nakut-nakutin)
 - lalu 1–2 pertanyaan triase (jika perlu)
 - jangan tulis signature panjang (server yang tambah)
-
-Tujuan:
-Membuat calon pelanggan merasa:
-✔ Ditangani oleh ahli
-✔ Tidak digurui
-✔ Tidak ditekan
-✔ Percaya untuk lanjut
 `.trim();
 }
 
@@ -1258,7 +1258,9 @@ app.get("/cron/followup", async (req, res) => {
 
 // ---------- HEALTH ----------
 app.get("/", (_req, res) =>
-  res.status(200).send("HONGZ AI SERVER — HYBRID C+ ELITE (ADMIN STABIL + RADAR + ANTI 3T3M + AUTOCLAIM CLEAN) — OK")
+  res
+    .status(200)
+    .send("HONGZ AI SERVER — HYBRID C+ ELITE (ADMIN STABIL + RADAR + ANTI 3T3M + AUTOCLAIM CLEAN + ANTI MACET) — OK")
 );
 
 // ---------- START ----------
