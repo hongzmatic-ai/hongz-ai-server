@@ -427,6 +427,84 @@ function leadTag(score) {
 
 // ---------- STYLE DETECTION ----------
 function detectStyle(body) {
+
+// ===================================================
+// SUN TZU SYSTEM — INTENT + ADAPTIVE COMMANDER (A+B+C)
+// Bunglon = adaptif | Buaya = tahan harga/ego test | Elang = urgent presisi | Pemancing = pancing komitmen
+// ===================================================
+function sunTzuScan(body) {
+  const t = String(body || "").toLowerCase().trim();
+
+  const hasVeh = hasVehicleInfo(t);
+  const hasSym = hasSymptomInfo(t);
+  const cantDrive = detectCantDrive(t);
+  const noStart = detectNoStart(t);
+  const acMode = detectAC(t);
+
+  const priceOnlyShort = detectPriceOnly(t) && t.length < 35;
+  const egoTest = /(bengkel lain|katanya|emang bisa|yakin|kok mahal|jangan bohong|coba jelasin)/i.test(t);
+  const hesitant = /(lihat dulu|nanti dulu|sekadar tanya|cuma tanya|belum tentu|masih mikir)/i.test(t);
+  const urgency = /(darurat|tolong|cepat|mogok|bahaya|stuck)/i.test(t);
+  const buyingSignal = detectBuyingSignal(t);
+  const scheduleAsk = askedForSchedule(t);
+
+  // score 0..10
+  let score = 0;
+  if (hasVeh) score += 2;
+  if (hasSym) score += 2;
+  if (buyingSignal || scheduleAsk) score += 3;
+  if (cantDrive) score += 4;
+  if (noStart) score += 4;
+  if (acMode) score += 2;
+  if (urgency) score += 2;
+
+  if (priceOnlyShort) score -= 2;
+  if (hesitant) score -= 1;
+
+  if (score < 0) score = 0;
+  if (score > 10) score = 10;
+
+  // intent lane
+  let intent = "GENERAL";
+  if (acMode) intent = "AC";
+  else if (noStart) intent = "NO_START";
+  else if (cantDrive || urgency) intent = "URGENT";
+  else if (buyingSignal || scheduleAsk) intent = "BOOKING";
+  else if (priceOnlyShort || egoTest) intent = "PRICE_TEST";
+  else if (hasVeh || hasSym) intent = "TECHNICAL";
+
+  // commander mode (animal)
+  let commander = "BUNGLON";
+  if (intent === "URGENT") commander = "ELANG";
+  else if (intent === "PRICE_TEST" || egoTest) commander = "BUAYA";
+  else if (intent === "BOOKING") commander = "PEMANCING";
+  else commander = "BUNGLON";
+
+  // closing pressure (tanpa mengemis)
+  let pressure = "SOFT";
+  if (score >= 7 && (intent === "BOOKING" || intent === "URGENT")) pressure = "FIRM";
+
+  return { score, intent, commander, pressure, flags: { hasVeh, hasSym, cantDrive, noStart, acMode, priceOnlyShort, egoTest, hesitant, urgency, buyingSignal, scheduleAsk } };
+}
+
+// Closing premium TANPA kata "slot" -> pakai "ruang pemeriksaan"
+function sunTzuClosing(scan, stage, ticketType) {
+  // towing = jangan bahas booking
+  if (ticketType === "TOWING" || scan.intent === "URGENT") {
+    return "Kalau unit tidak aman dijalankan, kirim *share lokasi* ya—kami koordinasikan penanganan tercepat & paling aman.";
+  }
+
+  // stage rendah: jangan dorong keras
+  if (stage <= 0) return "";
+  if (stage === 1) return "Kalau berkenan, kita rapikan datanya dulu—biar arah diagnosanya presisi.";
+
+  // stage >= 2: boleh closing premium
+  if (scan.pressure === "FIRM") {
+    return "Kalau Anda siap, kami bisa amankan **ruang pemeriksaan** agar diagnosa tidak tergesa-gesa. Ketik *JADWAL* ya.";
+  }
+  return "Kalau Anda siap, ketik *JADWAL*—admin bantu atur **ruang pemeriksaan** yang pas.";
+}
+
   const t = String(body || "");
   const low = t.toLowerCase();
 
