@@ -1198,6 +1198,15 @@ const scan = intentScanElite(body, { style, stage, type });
     db.customers[customerId].lastSeen = nowISO();
   }
 
+const stage = db.customers[customerId].stage || "NEW";
+
+const type =
+  detectCantDrive(body) ? "TOWING" :
+  (/booking|jadwal|kapan bisa|bisa masuk/i.test(body) ? "BOOKING" :
+  (detectPriceOnly(body) ? "PRICE" : "TECH"));
+
+const scan = intentScanElite(body, { style, stage, type });
+
   // STOP/START follow-up
   if (upper(body) === "STOP" || upper(body) === "UNSUBSCRIBE") {
     db.customers[customerId].optOut = true;
