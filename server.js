@@ -1265,7 +1265,10 @@ const type =
   const customerId = sha16(from);
   if (!db.customers[customerId]) {
     db.customers[customerId] = {
-      from,
+    const stage = db.customers[customerId].stage || "NEW";
+const scan = sunTzuScan(body);
+const closing = sunTzuClosing(scan, stage, type);
+  from,
       firstSeen: nowISO(),
       lastSeen: nowISO(),
       activeTicketId: "",
