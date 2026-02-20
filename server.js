@@ -1266,8 +1266,6 @@ const type =
   if (!db.customers[customerId]) {
     db.customers[customerId] = {
     const stage = db.customers[customerId].stage || "NEW";
-const scan = sunTzuScan(body);
-const closing = sunTzuClosing(scan, stage, type);
   from,
       firstSeen: nowISO(),
       lastSeen: nowISO(),
@@ -1284,7 +1282,8 @@ const type =
   detectCantDrive(body) ? "TOWING" :
   (/booking|jadwal|kapan bisa|bisa masuk/i.test(body) ? "BOOKING" :
   (detectPriceOnly(body) ? "PRICE" : "TECH"));
-
+const scan = sunTzuScan(body);
+const closing = sunTzuClosing(scan, stage, type);
 const scan = intentScanElite(body, { style, stage, type });
 
   // STOP/START follow-up
