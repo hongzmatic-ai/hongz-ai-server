@@ -1289,7 +1289,6 @@ const type =
 // scan + closing
 const scan = sunTzuScan(body);
 const closing = sunTzuClosing(scan, stage, type);
-const scan = intentScanElite(body, { style, stage, type });
 
   // STOP/START follow-up
   if (upper(body) === "STOP" || upper(body) === "UNSUBSCRIBE") {
