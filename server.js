@@ -1262,26 +1262,31 @@ const type =
   }
 
   // customer identity
-  const customerId = sha16(from);
-  if (!db.customers[customerId]) {
-    db.customers[customerId] = {
-    const stage = db.customers[customerId].stage || "NEW";
-  from,
-      firstSeen: nowISO(),
-      lastSeen: nowISO(),
-      activeTicketId: "",
-      optOut: false,
-    };
-  } else {
-    db.customers[customerId].lastSeen = nowISO();
-  }
 
+const customerId = sha16(from);
+if (!db.customers[customerId]) {
+  db.customers[customerId] = {
+    from,
+    firstSeen: nowISO(),
+    lastSeen: nowISO(),
+    activeTicketId: "",
+    optOut: false,
+    stage: "NEW",
+  };
+} else {
+  db.customers[customerId].lastSeen = nowISO();
+}
+
+// stage (ambil dari db.customers)
 const stage = db.customers[customerId].stage || "NEW";
 
+// type (tentukan jalur)
 const type =
   detectCantDrive(body) ? "TOWING" :
   (/booking|jadwal|kapan bisa|bisa masuk/i.test(body) ? "BOOKING" :
   (detectPriceOnly(body) ? "PRICE" : "TECH"));
+
+// scan + closing
 const scan = sunTzuScan(body);
 const closing = sunTzuClosing(scan, stage, type);
 const scan = intentScanElite(body, { style, stage, type });
