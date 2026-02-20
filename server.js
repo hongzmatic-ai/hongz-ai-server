@@ -1240,9 +1240,6 @@ async function webhookHandler(req, res) {
   const body = normText(req.body.Body || "");
   const location = extractLocation(req.body);   
   const style = detectStyle(body);
-const stage = (db?.customer?.[from]?.stage) || "NEW"; // default NEW
-const scan = sunTzuScan(body);
-const closing = sunTzuClosing(scan, stage, type);
 const type =
   detectCantDrive(body) ? "TOWING" :
   (/booking|jadwal|kapan bisa|bisa masuk/i.test(body) ? "BOOKING" :
