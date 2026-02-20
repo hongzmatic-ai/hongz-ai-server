@@ -316,6 +316,97 @@ function detectPriceOnly(body) {
   return /berapa|biaya|harga|kisaran|range|murah|diskon|nego|budget/i.test(body);
 }
 
+// ===================================================
+// INTENT SCANNER — ELITE A+B+C
+// A: baca niat tersembunyi
+// B: closing premium halus
+// C: adaptive (bunglon) ikut arena & signal
+// ===================================================
+function intentScanElite(body, ctx = {}) {
+  const t = String(body || "").toLowerCase().trim();
+
+  // --- Signals (content) ---
+  const hasVeh = hasVehicleInfo(t);
+  const hasSym = hasSymptomInfo(t);
+  const hasLocAsk = /(lokasi|maps|di mana|dimana|alamat)/i.test(t);
+  const hasSchedule = /(kapan|hari ini|besok|bisa masuk|jadwal|booking|antri|slot|ruang pemeriksaan)/i.test(t);
+  const cantDrive = detectCantDrive(t);
+  const noStart = detectNoStart(t);
+  const acMode = detectAC(t);
+
+  // --- Psychology signals (A) ---
+  const priceOnlyShort = detectPriceOnly(t) && t.length < 35;
+  const egoTest = /(bengkel lain|katanya|emang bisa|yakin|kok mahal|jangan bohong|coba jelasin)/i.test(t);
+  const hesitant = /(lihat dulu|nanti dulu|sekadar tanya|cuma tanya|belum tentu|masih mikir)/i.test(t);
+  const urgency = /(darurat|tolong|cepat|mogok|bahaya|stuck)/i.test(t);
+  const buyingSignal = detectBuyingSignal(t);
+
+  // --- Score (0..10) ---
+  let score = 0;
+  if (hasVeh) score += 2;
+  if (hasSym) score += 2;
+  if (hasSchedule) score += 2;
+  if (buyingSignal) score += 2;
+  if (cantDrive) score += 3;
+  if (noStart) score += 3;
+  if (acMode) score += 2;
+  if (hasLocAsk) score += 1;
+  if (urgency) score += 2;
+
+  // penalties
+  if (priceOnlyShort) score -= 2;
+  if (hesitant) score -= 1;
+
+  // clamp
+  if (score < 0) score = 0;
+  if (score > 10) score = 10;
+
+  // --- Intent class ---
+  // 1) URGENT: cantDrive/noStart/location/urgency
+  // 2) BOOKING: schedule/buyingSignal
+  // 3) TECH: vehicle+symptom
+  // 4) PRICE_TEST: priceOnly/egoTest
+  let intent = "GENERAL";
+  if (acMode) intent = "AC";
+  else if (noStart) intent = "NO_START";
+  else if (cantDrive || urgency) intent = "URGENT";
+  else if (hasSchedule || buyingSignal) intent = "BOOKING";
+  else if (hasVeh || hasSym) intent = "TECHNICAL";
+  else if (priceOnlyShort || egoTest) intent = "PRICE_TEST";
+
+  // --- Closing mode (B+C) ---
+  // pressureLevel: SOFT | FIRM (tanpa mengemis)
+  // adaptiveTone: BUNGLON | BUAYA | ELANG | PEMANCING
+  let pressureLevel = "SOFT";
+  if (score >= 7 && (intent === "BOOKING" || intent === "URGENT")) pressureLevel = "FIRM";
+
+  let adaptiveTone = "BUNGLON";
+  if (intent === "PRICE_TEST" || egoTest) adaptiveTone = "BUAYA";     // tahan, jangan kebawa arus harga
+  else if (intent === "URGENT") adaptiveTone = "ELANG";               // tegas, cepat, presisi
+  else if (intent === "BOOKING") adaptiveTone = "PEMANCING";          // pancing komitmen halus
+  else adaptiveTone = "BUNGLON";                                      // normal adaptif
+
+  return {
+    score,
+    intent,
+    pressureLevel,
+    adaptiveTone,
+    flags: { hasVeh, hasSym, hasSchedule, buyingSignal, cantDrive, noStart, acMode, priceOnlyShort, egoTest, hesitant, urgency }
+  };
+}
+
+// Premium closing lines — tanpa kata "slot", pakai "ruang pemeriksaan"
+function premiumClosingLine(scan) {
+  // dipakai hanya saat stage>=2 atau intent BOOKING/URGENT dan score tinggi
+  if (scan.intent === "URGENT") {
+    return "Kalau unit tidak aman dijalankan, kami bisa arahkan langkah paling aman dulu. Kirim share lokasi—kami koordinasikan penanganan tercepat.";
+  }
+  if (scan.pressureLevel === "FIRM") {
+    return "Kalau Anda berkenan, kami bisa amankan **ruang pemeriksaan** agar diagnosa tidak tergesa-gesa. Tinggal ketik *JADWAL*.";
+  }
+  return "Kalau Anda berkenan, kita rapikan datanya dulu—kalau sudah siap, ketik *JADWAL* biar admin bantu atur **ruang pemeriksaan** yang pas.";
+}
+
 function leadScore({ body, hasLocation, isTowingCmd, isJadwalCmd, cantDrive }) {
   let score = 0;
   if (cantDrive) score += 5;
@@ -1010,21 +1101,7 @@ function followupFallback(ticket) {
           : (ticket.stage <= 0 ? "Boleh info mobil & tahunnya, plus keluhan yang paling terasa?" : "Kondisinya masih sama atau ada perubahan?"));
 
   const action =
-    ticket.type === "TOWING"
-      ? "Kalau unit tidak aman dijalankan, kirim *share lokasi* ya—admin prioritas akan bantu koordinasi."
-      : (ticket.stage >= 2
-          ? "Kalau Anda sudah siap, ketik *JADWAL*—nanti admin bantu pilih waktu yang pas."
-          : "Kalau sudah oke, kita lanjutkan langkah paling aman untuk unitnya ya.");
-
-  return [
-    line1,
-    ask,
-    action,
-    (ticket.stage >= 2 && ticket.type !== "TOWING" ? scarcityLine(ticket) : ""),
-    confidenceLine("neutral"),
-    "",
-    signatureShort(),
-    "",
+    ticket.type === 
     "Jika tidak ingin follow-up lagi, ketik STOP.",
   ].filter(Boolean).join("\n");
 }
