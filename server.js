@@ -1246,7 +1246,7 @@ const type =
   (/booking|jadwal|kapan bisa|bisa masuk/i.test(body) ? "BOOKING" :
   (detectPriceOnly(body) ? "PRICE" : "TECH"));
 
-const scan = intentScanElite(body, { style, stage, type });
+const closing = sunTzuClosing(scan, stage, type);
   dlog("IN", { from, to, body, hasLocation: !!location });
 
   // ADMIN path
