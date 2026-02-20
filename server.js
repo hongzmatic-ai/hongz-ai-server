@@ -1232,63 +1232,63 @@ Syarat:
 }
 
 // ---------- MAIN WEBHOOK HANDLER ----------
+
 async function webhookHandler(req, res) {
   const db = loadDB();
 
   const from = normalizeFrom(req.body.From || "");
   const to = normalizeFrom(req.body.To || "");
   const body = normText(req.body.Body || "");
-  const location = extractLocation(req.body);   
+  const location = extractLocation(req.body);
   const style = detectStyle(body);
-const type =
-  detectCantDrive(body) ? "TOWING" :
-  (/booking|jadwal|kapan bisa|bisa masuk/i.test(body) ? "BOOKING" :
-  (detectPriceOnly(body) ? "PRICE" : "TECH"));
-
 
   dlog("IN", { from, to, body, hasLocation: !!location });
 
-  // ADMIN path
+  // ================= ADMIN =================
   if (isAdmin(from)) {
     const reply = handleAdminCommand(db, body);
     saveDB(db);
     return replyTwiML(res, reply);
   }
 
-  // monitor should not trigger bot logic (avoid loops)
+  // ================= MONITOR =================
   if (isMonitor(from)) {
     saveDB(db);
     return replyTwiML(res, "✅ Monitor aktif.");
   }
 
-  // customer identity
+  // ================= CUSTOMER IDENTITY =================
+  const customerId = sha16(from);
 
-const customerId = sha16(from);
-if (!db.customers[customerId]) {
-  db.customers[customerId] = {
-    from,
-    firstSeen: nowISO(),
-    lastSeen: nowISO(),
-    activeTicketId: "",
-    optOut: false,
-    stage: "NEW",
-  };
-} else {
-  db.customers[customerId].lastSeen = nowISO();
+  if (!db.customers[customerId]) {
+    db.customers[customerId] = {
+      from,
+      firstSeen: nowISO(),
+      lastSeen: nowISO(),
+      activeTicketId: "",
+      optOut: false,
+      stage: "NEW",
+    };
+  } else {
+    db.customers[customerId].lastSeen = nowISO();
+  }
+
+  const stage = db.customers[customerId].stage || "NEW";
+
+  // ================= TYPE ROUTING =================
+  const type =
+    detectCantDrive(body) ? "TOWING" :
+    (/booking|jadwal|kapan bisa|bisa masuk/i.test(body) ? "BOOKING" :
+    (detectPriceOnly(body) ? "PRICE" : "TECH"));
+
+  // ================= SCAN + CLOSING =================
+  const scan = sunTzuScan(body);
+  const closing = sunTzuClosing(scan, stage, type);
+
+  // ================= FINAL REPLY =================
+  saveDB(db);
+  return replyTwiML(res, closing);
 }
-
-// stage (ambil dari db.customers)
-const stage = db.customers[customerId].stage || "NEW";
-
-// type (tentukan jalur)
-const type =
-  detectCantDrive(body) ? "TOWING" :
-  (/booking|jadwal|kapan bisa|bisa masuk/i.test(body) ? "BOOKING" :
-  (detectPriceOnly(body) ? "PRICE" : "TECH"));
-
-// scan + closing
-const scan = sunTzuScan(body);
-const closing = sunTzuClosing(scan, stage, type);
 
   // STOP/START follow-up
   if (upper(body) === "STOP" || upper(body) === "UNSUBSCRIBE") {
