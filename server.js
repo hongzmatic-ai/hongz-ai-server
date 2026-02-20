@@ -1291,7 +1291,7 @@ async function webhookHandler(req, res) {
 }
 
   // STOP/START follow-up
-  if (upper(body) === "STOP" || upper(body) === "UNSUBSCRIBE") 
+  if (upper(body) === "STOP" || upper(body) === "UNSUBSCRIBE") {
     db.customers[customerId].optOut = true;
     saveDB(db);
     return replyTwiML(res, "Baik. Follow-up dinonaktifkan. Jika ingin aktif lagi, ketik START.");
