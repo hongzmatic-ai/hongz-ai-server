@@ -1,4 +1,4 @@
-/**
+ji/**
  * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — RAJA MEDAN FINAL (PATCHED)
  * ✅ FIX: NO_START + AC MODE + CantDrive split + Lane-aware AI (no more "nyasar transmisi")
  *
@@ -1157,7 +1157,9 @@ Syarat:
 async function webhookHandler(req, res) {
   const db = loadDB();
 
-  const from = normalizeFrom(req.body.From || "");
+  
+  const style = detectStyle(body);const from = normalizeFrom(req.body.From || "");
+  const scan = intentScanElite(body, { style, stage, type });
   const to = normalizeFrom(req.body.To || "");
   const body = normText(req.body.Body || "");
   const location = extractLocation(req.body);
