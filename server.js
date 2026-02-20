@@ -1157,13 +1157,11 @@ Syarat:
 async function webhookHandler(req, res) {
   const db = loadDB();
 
-  
-  const style = detectStyle(body);const from = normalizeFrom(req.body.From || "");
-  const scan = intentScanElite(body, { style, stage, type });
+  const from = normalizeFrom(req.body.From || "");
   const to = normalizeFrom(req.body.To || "");
   const body = normText(req.body.Body || "");
-  const location = extractLocation(req.body);
-
+  const location = extractLocation(req.body);   
+  const style = detectStyle(body);
   dlog("IN", { from, to, body, hasLocation: !!location });
 
   // ADMIN path
