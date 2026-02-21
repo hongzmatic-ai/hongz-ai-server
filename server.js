@@ -1560,7 +1560,10 @@ if (MONITOR_WHATSAPP_TO && monitorAllowedByLevel(score)) {
   }
 
   // DEFAULT: Human AI reply (Hybrid, lane-aware)
-  const ai = await aiReply({ userText: body, ticket, style, stage, cantDrive, priceOnly });
+  const ai = aiReply({ userText: body, ticket, style, stage, cantDrive, priceOnly }).catch(e => {
+  console.error("aiReply error:", e);
+  return null;
+});
 
   let replyText;
   if (ai) {
