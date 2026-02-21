@@ -1593,7 +1593,9 @@ async function webhookHandler(req, res) {
 }
 
 // ---------- ROUTES ----------
-app.post(["/twilio/webhook", "/whatsapp/incoming"], (req, res) => {
+app.post("/twilio/webhook", webhookHandler);
+
+app.post("/whatsapp/incoming", webhookHandler);
   webhookHandler(req, res).catch((e) => {
     console.error("Webhook fatal:", e.message);
     return replyTwiML(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
