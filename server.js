@@ -1425,17 +1425,16 @@ if (MONITOR_WHATSAPP_TO && monitorAllowedByLevel(score)) {
       (arena.lane === "URGENT") ||
       (arena.lane === "BOOKING");
 
-    if (!adminEqMon && shouldNotifyAdmin && cooldownOk) {
-      ticket.lastAdminNotifyAtMs = now;
-      await notifyAdmin({
-        title: "📣 *ADMIN ALERT*",
-        ticket,
-        reason: hit ? `Keyword hit: "${hit}"` : (cantDrive ? "Cant drive / urgent" : `Score >= ${minScore}`),
-        body,
-        locationUrl: ticket.locationUrl || "",
-      });
-    }
-  }
+  if (!adminEqMon && shouldNotifyAdmin && cooldownOK) {
+  ticket.lastAdminNotifyAtMs = now;
+  notifyAdmin({
+    title: "🔔 ADMIN ALERT",
+    ticket,
+    reason: hit ? `keyword hit: ${hit}` : (cantDrive ? "Cant drive / urgent" : `score >= ${minScore}`),
+    body,
+    locationUrl: ticket.locationUrl || "",
+  }).catch(err => console.error("notifyAdmin error:", err));
+}  
 
   // RULE 0: address question -> only MAPS_LINK
   if (/alamat|lokasi|maps|map|di mana|dimana/i.test(body)) {
