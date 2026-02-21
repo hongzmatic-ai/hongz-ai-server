@@ -1309,7 +1309,7 @@ async function webhookHandler(req, res) {
     return replyTwiML(res, "Siap. Follow-up diaktifkan kembali. Silakan tulis keluhan Anda.");
   }
 
-  const ticket = getOrCreateTicket(db, customerId, from);
+  const ticketFollowup = getOrCreateTicket(db, customerId, from);
 
   const cmdTowing = isCommand(body, "TOWING");
   const cmdJadwal = isCommand(body, "JADWAL");
