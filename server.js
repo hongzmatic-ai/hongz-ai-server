@@ -1395,10 +1395,11 @@ async function webhookHandler(req, res) {
 
   const style = detectStyle(body);
 
-  // ✅ RADAR
-  if (MONITOR_WHATSAPP_TO && monitorAllowedByLevel(score)) {
-    await notifyMonitor({ title: "🛰️ RADAR IN", ticket, body });
-  }
+  // RADAR
+if (MONITOR_WHATSAPP_TO && monitorAllowedByLevel(score)) {
+  notifyMonitor({ title: "🛠 RADAR IN", ticket, body })
+    .catch(err => console.error("notifyMonitor error:", err));
+}
 
   // ✅ ADMIN STABIL
   const adminNotifyOn = String(ADMIN_NOTIFY_ENABLED).toLowerCase() === "true";
