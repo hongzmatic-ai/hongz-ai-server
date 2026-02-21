@@ -985,7 +985,7 @@ async function aiTryModel(client, model, userText, sysPrompt, timeoutMs) {
     { role: "system", content: sysPrompt },
     { role: "user", content: userText },
   ],
-},
+}),
     timeoutMs,
     `OPENAI_TIMEOUT_${model}`
   );
