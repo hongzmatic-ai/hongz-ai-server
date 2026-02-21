@@ -1178,11 +1178,18 @@ function followupFallback(ticket) {
           ? "Saat distarter sekarang cekrek/lemot atau muter normal?"
           : (ticket.stage <= 0 ? "Boleh info mobil & tahunnya, plus keluhan yang paling terasa?" : "Kondisinya masih sama atau ada perubahan?"));
 
-  const action =
-    ticket.type === 
-    "Jika tidak ingin follow-up lagi, ketik STOP.",
-  ].filter(Boolean).join("\n");
-}
+ const action = [
+  ticket.type === "AC"
+    ? "AC-nya sekarang dingin/tidak? Ada bunyi kompresor?"
+    : null,
+  lane === "NO_START"
+    ? "Saat distarter sekarang cekrek/lemet atau muter normal?"
+    : null,
+  ticket.stage <= 0
+    ? "Boleh info mobil & tahunnya, plus keluhan yang paling terasa?"
+    : null,
+  "Jika tidak ingin follow-up lagi, ketik STOP.",
+].filter(Boolean).join("\n"); 
 
 async function followupAI(ticket) {
   if (!OPENAI_API_KEY || !OpenAI) return null;
