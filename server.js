@@ -1412,10 +1412,18 @@ if (ticket.lane && ticket.stage === 0 && !ticket.askedFallback) {
 // ---------------- ROUTES ----------------
 app.post('/twilio/webhook', async (req, res) => {
   try {
+    console.log("[TWILIO HIT] /twilio/webhook", {
+      method: req.method,
+      contentType: req.headers["content-type"],
+      keys: Object.keys(req.body || {}),
+      from: req.body?.From,
+      body: req.body?.Body,
+    });
+
     return await webhookHandler(req, res);
   } catch (e) {
-    console.error('webhook error', e?.message || e);
-    return replyTwiML(res, 'Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏');
+    console.error("webhook error", e?.message || e);
+    return replyTwiml(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
   }
 });
 
