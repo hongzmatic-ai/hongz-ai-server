@@ -457,7 +457,7 @@ function sunTzuScan(body) {
   const sInfo = hasSymptomInfo(t);
   const cantDrive = detectCantDrive(t);
   const noStart = detectNoStart(t);
-  const acMode = detectAC(t);
+  const acScan = detectAC(t);
 
   const priceOnlyShort = detectPriceOnly(t) && t.length < 35;
   const egoTest = /(bengkel lain|katanya|emang bisa|yakin|kok mahal|jangan bohong|coba jelasin)/i.test(t);
