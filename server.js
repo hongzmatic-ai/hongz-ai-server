@@ -988,6 +988,26 @@ function safeStr(x) {
   return (x || "").toString().trim();
 }
 
+// ===== Detect AC keywords =====
+function detectAC(text) {
+  const t = String(text || "").toUpperCase();
+
+  const keywords = [
+    "AC",
+    "TIDAK DINGIN",
+    "DINGIN SEBENTAR",
+    "PANAS",
+    "KOMPRESOR",
+    "FREON",
+    "BLOWER",
+    "KIPAS",
+    "KONDENSOR",
+    "EVAPORATOR"
+  ];
+
+  return keywords.some(k => t.includes(k));
+}
+
 function getCust(db, customerId) {
   if (!db.customers) db.customers = {};
   if (!db.customers[customerId]) return null;
