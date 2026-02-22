@@ -1678,19 +1678,35 @@ app.get("/cron/followup", async (req, res) => {
 
 // ---------- HEALTH ----------
 app.get("/", (_req, res) => {
-  const arenaOn = String(ARENA_CONTROL_ENABLED).toLowerCase() === "true";
-  const r = parsePriorityRouting(PRIORITY_ROUTING).join(",");
-  return res.status(200).send(
-    `HONGZ AI SERVER — RAJA MEDAN FINAL (PATCHED) — OK
-ArenaControl: ${arenaOn ? "ON" : "OFF"} | PriorityRouting: ${r || "-"}
-WebhookHint: ${TWILIO_WEBHOOK_URL || "(set TWILIO_WEBHOOK_URL in Render ENV if you want)"}`
-  );
+  try {
+    const arenaOn =
+      String(ARENA_CONTROL_ENABLED).toLowerCase() === "true";
+
+    const routingArr = parsePriorityRouting(PRIORITY_ROUTING);
+    const routingText = Array.isArray(routingArr)
+      ? routingArr.join(",")
+      : "-";
+
+    const text =
+`HONGZ AI SERVER – RAJA MEDAN FINAL (PATCHED) – OK
+
+ArenaControl: ${arenaOn ? "ON" : "OFF"}
+PriorityRouting: ${routingText}
+WebhookHint: ${TWILIO_WEBHOOK_URL || "(set TWILIO_WEBHOOK_URL in Render ENV)"}`;
+
+    return res.status(200).send(text);
+  } catch (e) {
+    console.error("health error:", e?.message || e);
+    return res.status(500).send("Health error");
+  }
 });
+
 
 // ---------- START ----------
 const port = process.env.PORT || 10000;
+
 app.listen(port, () => {
-  console.log("HONGZ AI SERVER — RAJA MEDAN FINAL (PATCHED) — START");
+  console.log("HONGZ AI SERVER – RAJA MEDAN FINAL (PATCHED) – START");
   console.log("Listening on port:", port);
   console.log("Webhook routes: /twilio/webhook and /whatsapp/incoming");
 });
