@@ -12,6 +12,37 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// ===== Build AI Context dari Memory =====
+function buildAIContext(db, customerId, body) {
+  const customer = db.customers[customerId];
+  if (!customer) return body;
+
+  const profile = customer.profile || {};
+  const history = customer.history || [];
+
+  const historyText = history
+    .slice(-5)
+    .map((h, i) => `${i + 1}. ${h.issue || ""}`)
+    .join("\n");
+
+  return `
+DATA PELANGGAN:
+Nama: ${profile.name || "-"}
+Mobil: ${profile.car || "-"}
+Kota: ${profile.city || "-"}
+Keluhan Terakhir: ${profile.lastIssue || "-"}
+
+RIWAYAT SINGKAT:
+${historyText || "-"}
+
+PESAN TERBARU:
+${body}
+
+Jawab sebagai asisten bengkel profesional Hongz Bengkel Matic.
+Fokus solusi, jelas, dan jangan ulang pertanyaan yang sudah dijawab.
+`;
+}
+
 // OpenAI v4 (optional)
 let OpenAI = null;
 try {
