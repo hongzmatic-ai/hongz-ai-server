@@ -981,16 +981,27 @@ async function webhookHandler(req, res) {
   const customerId = sha16(from);
 
   if (!db.customers[customerId]) {
-    db.customers[customerId] = {
-      from,
-      firstSeen: nowISO(),
-      lastSeen: nowISO(),
-      activeTicketId: '',
-      optOut: false,
-    };
-  } else {
-    db.customers[customerId].lastSeen = nowISO();
-  }
+   db.customers[customerId] = {
+  from,
+  firstSeen: nowISO(),
+  lastSeen: nowISO(),
+  activeTicketId: "",
+  optOut: false,
+  stage: "NEW",
+
+  // ✅ Memory Pelanggan
+  profile: {
+    name: "",
+    phone: cleanMsisdn(from),
+    car: "",        // contoh: "Innova 2012"
+    city: "",       // opsional
+    notes: "",
+    lastIssue: "",
+    lastLane: "",
+    lastSeenAt: nowISO(),
+  },
+  history: [], // ringkas: simpan 10 tiket terakhir
+}; 
 
   // STOP/START follow-up
   if (upper(body) === 'STOP' || upper(body) === 'UNSUBSCRIBE') {
