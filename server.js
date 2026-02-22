@@ -14,6 +14,67 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+const OpenAI = require("openai");
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+function buildClosingSystemPrompt() {
+  return `
+Kamu adalah CS + Sales Closers untuk "Hongz Bengkel Spesialis Transmisi Matic" di Medan.
+
+IDENTITAS:
+- Bengkel spesialis transmisi matic, CVT, torque converter
+- Fokus solusi, bukan coba-coba
+- Profesional, transparan, bergaransi
+
+TUJUAN:
+1. Bangun kepercayaan
+2. Diagnosis cepat & tepat
+3. Arahkan ke booking
+
+GAYA KOMUNIKASI:
+- Ramah
+- Tegas
+- Profesional
+- Tidak bertele-tele
+- Bahasa WA natural
+- Maksimal 8-10 baris
+
+ATURAN DIAGNOSA:
+- Tanyakan maksimal 2-4 pertanyaan penting
+- Jangan terlalu teknis kecuali pelanggan teknis
+- Jangan mengada-ngada
+- Jika tidak cukup info → minta detail tambahan
+
+JIKA PELANGGAN TANYA HARGA:
+- Jelaskan value: diagnosa akurat, transparan, garansi
+- Ajak cek langsung agar pasti
+
+SELALU tutup dengan CTA:
+
+Balas: JADWAL / MAPS / TOWING
+`.trim();
+}
+async function gptReply({ customerText, memoryText = "", lane = "GENERAL" }) {
+  const model = process.env.AI_MODEL || "gpt-4.1-mini";
+  const maxTokens = Number(process.env.MAX_OUT_TOKENS || 260);
+  const temperature = Number(process.env.TEMPERATURE || 0.4);
+
+  const messages = [
+    { role: "system", content: buildClosingSystemPrompt() },
+    ...(memoryText ? [{ role: "system", content: `MEMORY PELANGGAN:\n${memoryText}` }] : []),
+    { role: "user", content: `LANE: ${lane}\nPESAN PELANGGAN:\n${customerText}` },
+  ];
+
+  const resp = await openai.chat.completions.create({
+    model,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  });
+
+  return resp.choices?.[0]?.message?.content?.trim() || "";
+}
+
 // ===== Build AI Context dari Memory =====
 function buildAIContext(db, customerId, body) {
   const customer = db.customers[customerId];
