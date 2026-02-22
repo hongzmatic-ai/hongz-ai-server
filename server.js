@@ -1611,19 +1611,28 @@ function fireAndForget(promise, label) {
 }
 
 // ---------- ROUTES ----------
-
-app.post("/twilio/webhook", (req, res) => {
-  webhookHandler(req, res).catch((e) => {
-    console.error("webhook error", e?.message);
-    return replyTwiml(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
-  });
+app.post("/twilio/webhook", async (req, res) => {
+  try {
+    await webhookHandler(req, res);
+  } catch (e) {
+    console.error("webhook error", e?.message || e);
+    return replyTwiml(
+      res,
+      "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏"
+    );
+  }
 });
 
-app.post("/whatsapp/incoming", (req, res) => {
-  webhookHandler(req, res).catch((e) => {
-    console.error("webhook error", e?.message);
-    return replyTwiml(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
-  });
+app.post("/whatsapp/incoming", async (req, res) => {
+  try {
+    await webhookHandler(req, res);
+  } catch (e) {
+    console.error("webhook error", e?.message || e);
+    return replyTwiml(
+      res,
+      "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏"
+    );
+  }
 });
 
 // ---------- CRON FOLLOW-UP ----------
