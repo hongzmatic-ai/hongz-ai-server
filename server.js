@@ -1155,6 +1155,7 @@ if (upper(body) === "START" || upper(body) === "SUBSCRIBE") {
 }
 
   const ticket = getOrCreateTicket(db, customerId, from);
+const acMode = detectAC(body);
 
 // ===============================
 // Anti-ulang fallback (hanya 1x)
