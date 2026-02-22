@@ -106,14 +106,6 @@ Fokus solusi, jelas, dan jangan ulang pertanyaan yang sudah dijawab.
 `;
 }
 
-// OpenAI v4 (optional)
-let OpenAI = null;
-try {
-  const mod = require('openai');
-  OpenAI = mod?.default || mod;
-} catch (_) {
-  OpenAI = null;
-}
 
 // ---------------- ENV ----------------
 const PORT = process.env.PORT || 10000;
