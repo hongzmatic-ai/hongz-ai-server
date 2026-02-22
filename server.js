@@ -1603,12 +1603,18 @@ if (MONITOR_WHATSAPP_TO && monitorAllowedByLevel(score)) {
 }
 
 // ---------- ROUTES ----------
-app.post("/twilio/webhook", webhookHandler);
 
-app.post("/whatsapp/incoming", webhookHandler);
+app.post("/twilio/webhook", (req, res) => {
   webhookHandler(req, res).catch((e) => {
-    console.error("Webhook fatal:", e.message);
-    return replyTwiML(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
+    console.error("webhook error", e?.message);
+    return replyTwiml(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
+  });
+});
+
+app.post("/whatsapp/incoming", (req, res) => {
+  webhookHandler(req, res).catch((e) => {
+    console.error("webhook error", e?.message);
+    return replyTwiml(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
   });
 });
 
