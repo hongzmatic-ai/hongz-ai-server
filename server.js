@@ -1,4 +1,4 @@
-'use strict';
+ini'use strict';
 
 /**
  * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — RAJA MEDAN FINAL (STABLE)
@@ -1092,7 +1092,7 @@ async function webhookHandler(req, res) {
   if (isAdmin(from)) {
     const reply = handleAdminCommand(db, body);
     saveDB(db);
-    return replyTwiML(res, reply);
+   return reply; // (res, reply);
   }
 
   // ---- MONITOR ----
