@@ -1002,7 +1002,7 @@ async function webhookHandler(req, res) {
   },
   history: [], // ringkas: simpan 10 tiket terakhir
 }; 
-
+}
   // STOP/START follow-up
   if (upper(body) === 'STOP' || upper(body) === 'UNSUBSCRIBE') {
     db.customers[customerId].optOut = true;
