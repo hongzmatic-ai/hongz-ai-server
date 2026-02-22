@@ -1431,7 +1431,9 @@ return result;
 
 app.post('/whatsapp/incoming', async (req, res) => {
   try {
-    return await webhookHandler(req, res);
+   const replyText = await webhookHandler(req);
+return replyTwiml(res, replyText || "Halo! Ada yang bisa kami bantu?");
+ 
   } catch (e) {
     console.error('webhook error', e?.message || e);
     return replyTwiML(res, 'Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏');
