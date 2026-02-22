@@ -1,4 +1,6 @@
-ini'use strict';
+/**
+ * HONGZ AI SERVER ...
+ */
 
 /**
  * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — RAJA MEDAN FINAL (STABLE)
