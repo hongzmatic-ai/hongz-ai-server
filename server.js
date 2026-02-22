@@ -1136,6 +1136,24 @@ if (upper(body) === "START" || upper(body) === "SUBSCRIBE") {
 
   const ticket = getOrCreateTicket(db, customerId, from);
 
+// ===============================
+// Anti-ulang fallback (hanya 1x)
+// ===============================
+ticket.stage = Number(ticket.stage || 0);
+ticket.askedFallback = !!ticket.askedFallback;
+
+if (ticket.lane && ticket.stage === 0 && !ticket.askedFallback) {
+  const msg = followupFallback(ticket);
+
+  ticket.askedFallback = true;
+  ticket.stage = 1;
+
+  pushHistory(db, ticket);
+  saveDB(db);
+
+  return replyTwiml(res, msg);
+}
+
   const cmdTowing = isCommand(body, 'TOWING');
   const cmdJadwal = isCommand(body, 'JADWAL');
 
