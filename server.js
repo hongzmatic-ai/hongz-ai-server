@@ -1420,7 +1420,9 @@ app.post('/twilio/webhook', async (req, res) => {
       body: req.body?.Body,
     });
 
-    return await webhookHandler(req, res);
+    const result = await webhookHandler(req, res);
+console.log("[WEBHOOK RESULT]", result);
+return result;
   } catch (e) {
     console.error("webhook error", e?.message || e);
     return replyTwiml(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
