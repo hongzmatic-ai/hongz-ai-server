@@ -1098,7 +1098,7 @@ async function webhookHandler(req, res) {
   // ---- MONITOR ----
   if (isMonitor(from)) {
     saveDB(db);
-    return replyTwiML(res, '✅ Monitor aktif.');
+    return , '✅ Monitor aktif.');
   }
 
   // ---- Customer Identity ----
