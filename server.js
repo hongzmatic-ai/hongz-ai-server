@@ -1665,7 +1665,7 @@ app.get("/cron/followup", async (req, res) => {
     console.error("cron/followup error:", e.message);
     return res.status(500).send("Error");
   }
-});
+
 
 // ---------- HEALTH ----------
 app.get("/", (_req, res) => {
