@@ -1410,6 +1410,16 @@ if (ticket.lane && ticket.stage === 0 && !ticket.askedFallback) {
 }
 
 // ---------------- ROUTES ----------------
+
+// Pastikan helper ini ADA di file (kalau belum ada, taruh di atas ROUTES)
+function replyTwiml(res, message) {
+  const twilio = require("twilio");
+  const twiml = new twilio.twiml.MessagingResponse();
+  twiml.message(message || "Halo! Ada yang bisa kami bantu?");
+  res.type("text/xml");
+  return res.send(twiml.toString());
+}
+
 app.post("/twilio/webhook", async (req, res) => {
   try {
     console.log("[TWILIO HIT] /twilio/webhook", {
@@ -1420,35 +1430,24 @@ app.post("/twilio/webhook", async (req, res) => {
       body: req.body?.Body,
     });
 
-    // webhookHandler harus mengembalikan TEXT balasan (string)
-    // lalu kita bungkus jadi TwiML di sini
-    const replyText = await webhookHandler(req);
-    console.log("[WEBHOOK RESULT]", replyText);
-
-    return replyTwiml(res, replyText || "Halo! Ada yang bisa kami bantu?");
+    const result = await webhookHandler(req, res);
+    console.log("[WEBHOOK RESULT]", result);
+    return result;
   } catch (e) {
     console.error("webhook error", e?.message || e);
-    return replyTwiml(
-      res,
-      "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏"
-    );
+    return replyTwiml(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
   }
 });
 
-// Optional route (boleh dipakai untuk testing manual)
-// Tapi buat Twilio WA webhook, cukup /twilio/webhook saja
 app.post("/whatsapp/incoming", async (req, res) => {
   try {
-    const replyText = await webhookHandler(req);
-    console.log("[WA INCOMING RESULT]", replyText);
-
-    return replyTwiml(res, replyText || "Halo! Ada yang bisa kami bantu?");
+    // WAJIB kirim req,res supaya webhookHandler tidak dapat res=undefined
+    const result = await webhookHandler(req, res);
+    console.log("[WHATSAPP INCOMING RESULT]", result);
+    return result;
   } catch (e) {
     console.error("webhook error", e?.message || e);
-    return replyTwiml(
-      res,
-      "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏"
-    );
+    return replyTwiml(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
   }
 });
 
