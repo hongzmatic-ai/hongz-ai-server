@@ -1410,7 +1410,7 @@ if (ticket.lane && ticket.stage === 0 && !ticket.askedFallback) {
 }
 
 // ---------------- ROUTES ----------------
-app.post('/twilio/webhook', async (req, res) => {
+app.post("/twilio/webhook", async (req, res) => {
   try {
     console.log("[TWILIO HIT] /twilio/webhook", {
       method: req.method,
@@ -1420,23 +1420,35 @@ app.post('/twilio/webhook', async (req, res) => {
       body: req.body?.Body,
     });
 
-    const result = await webhookHandler(req, res);
-console.log("[WEBHOOK RESULT]", result);
-return result;
+    // webhookHandler harus mengembalikan TEXT balasan (string)
+    // lalu kita bungkus jadi TwiML di sini
+    const replyText = await webhookHandler(req);
+    console.log("[WEBHOOK RESULT]", replyText);
+
+    return replyTwiml(res, replyText || "Halo! Ada yang bisa kami bantu?");
   } catch (e) {
     console.error("webhook error", e?.message || e);
-    return replyTwiml(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
+    return replyTwiml(
+      res,
+      "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏"
+    );
   }
 });
 
-app.post('/whatsapp/incoming', async (req, res) => {
+// Optional route (boleh dipakai untuk testing manual)
+// Tapi buat Twilio WA webhook, cukup /twilio/webhook saja
+app.post("/whatsapp/incoming", async (req, res) => {
   try {
-   const replyText = await webhookHandler(req);
-return replyTwiml(res, replyText || "Halo! Ada yang bisa kami bantu?");
- 
+    const replyText = await webhookHandler(req);
+    console.log("[WA INCOMING RESULT]", replyText);
+
+    return replyTwiml(res, replyText || "Halo! Ada yang bisa kami bantu?");
   } catch (e) {
-    console.error('webhook error', e?.message || e);
-    return replyTwiML(res, 'Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏');
+    console.error("webhook error", e?.message || e);
+    return replyTwiml(
+      res,
+      "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏"
+    );
   }
 });
 
