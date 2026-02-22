@@ -952,6 +952,79 @@ function followupFallback(ticket) {
   return [base, ask, 'Jika tidak ingin follow-up lagi, ketik STOP.'].join('\n');
 }
 
+// ====== CUSTOMER MEMORY HELPERS ======
+function safeStr(x) {
+  return (x || "").toString().trim();
+}
+
+function getCust(db, customerId) {
+  if (!db.customers) db.customers = {};
+  if (!db.customers[customerId]) return null;
+  return db.customers[customerId];
+}
+
+// Update profile sederhana dari teks pelanggan
+function updateProfileFromText(db, customerId, text) {
+  const cust = getCust(db, customerId);
+  if (!cust) return;
+
+  if (!cust.profile) cust.profile = {};
+  cust.profile.lastSeenAt = nowISO();
+
+  const t = safeStr(text);
+
+  // Deteksi "Mobil: Innova 2012" / "mobil innova 2012"
+  const carMatch =
+    t.match(/mobil\s*[:\-]?\s*([A-Za-z0-9 \-]{3,30})/i) ||
+    t.match(/tipe\s*mobil\s*[:\-]?\s*([A-Za-z0-9 \-]{3,30})/i);
+
+  if (carMatch && carMatch[1]) {
+    cust.profile.car = safeStr(carMatch[1]).slice(0, 40);
+  }
+
+  // Deteksi "Nama: Budi"
+  const nameMatch = t.match(/nama\s*[:\-]?\s*([A-Za-z ]{2,30})/i);
+  if (nameMatch && nameMatch[1]) {
+    cust.profile.name = safeStr(nameMatch[1]).slice(0, 30);
+  }
+
+  // Deteksi "Kota: Medan"
+  const cityMatch = t.match(/kota\s*[:\-]?\s*([A-Za-z ]{2,30})/i);
+  if (cityMatch && cityMatch[1]) {
+    cust.profile.city = safeStr(cityMatch[1]).slice(0, 30);
+  }
+}
+
+// Simpan ringkasan ticket ke history (max 10)
+function pushHistory(db, ticket) {
+  if (!ticket) return;
+  const customerId = ticket.customerId;
+  if (!customerId) return;
+
+  const cust = getCust(db, customerId);
+  if (!cust) return;
+
+  if (!Array.isArray(cust.history)) cust.history = [];
+
+  const item = {
+    id: ticket.id || "",
+    at: nowISO(),
+    lane: ticket.lane || "",
+    issue: ticket.issue || ticket.summary || "",
+    status: ticket.status || "",
+  };
+
+  cust.history.unshift(item);
+  cust.history = cust.history.slice(0, 10);
+
+  // cache juga di profile biar gampang dipakai prompt
+  if (!cust.profile) cust.profile = {};
+  cust.profile.lastIssue = item.issue || cust.profile.lastIssue || "";
+  cust.profile.lastLane = item.lane || cust.profile.lastLane || "";
+  cust.lastSeen = nowISO();
+}
+
+
 // ---------------- MAIN WEBHOOK ----------------
 async function webhookHandler(req, res) {
   const db = loadDB();
@@ -978,42 +1051,57 @@ async function webhookHandler(req, res) {
   }
 
   // ---- Customer Identity ----
-  const customerId = sha16(from);
+const customerId = sha16(from);
 
-  if (!db.customers[customerId]) {
-   db.customers[customerId] = {
-  from,
-  firstSeen: nowISO(),
-  lastSeen: nowISO(),
-  activeTicketId: "",
-  optOut: false,
-  stage: "NEW",
+if (!db.customers[customerId]) {
+  db.customers[customerId] = {
+    from,
+    firstSeen: nowISO(),
+    lastSeen: nowISO(),
+    activeTicketId: "",
+    optOut: false,
+    stage: "NEW",
 
-  // ✅ Memory Pelanggan
-  profile: {
-    name: "",
-    phone: cleanMsisdn(from),
-    car: "",        // contoh: "Innova 2012"
-    city: "",       // opsional
-    notes: "",
-    lastIssue: "",
-    lastLane: "",
-    lastSeenAt: nowISO(),
-  },
-  history: [], // ringkas: simpan 10 tiket terakhir
-}; 
+    // ✅ Memory Pelanggan
+    profile: {
+      name: "",
+      phone: cleanMsisdn(from),
+      car: "",
+      city: "",
+      notes: "",
+      lastIssue: "",
+      lastLane: "",
+      lastSeenAt: nowISO(),
+    },
+
+    history: [], // simpan max 10 tiket terakhir
+  };
+} else {
+  db.customers[customerId].lastSeen = nowISO();
 }
-  // STOP/START follow-up
-  if (upper(body) === 'STOP' || upper(body) === 'UNSUBSCRIBE') {
-    db.customers[customerId].optOut = true;
-    saveDB(db);
-    return replyTwiML(res, 'Baik. Follow-up dinonaktifkan. Jika ingin aktif lagi, ketik START.');
-  }
-  if (upper(body) === 'START' || upper(body) === 'SUBSCRIBE') {
-    db.customers[customerId].optOut = false;
-    saveDB(db);
-    return replyTwiML(res, 'Siap. Follow-up diaktifkan kembali. Silakan tulis keluhan Anda.');
-  }
+
+// ✅ Update memory dari teks pelanggan
+updateProfileFromText(db, customerId, body);
+saveDB(db);
+
+// ---- STOP/START follow-up ----
+if (upper(body) === "STOP" || upper(body) === "UNSUBSCRIBE") {
+  db.customers[customerId].optOut = true;
+  saveDB(db);
+  return replyTwiml(
+    res,
+    "Baik. Follow-up dinonaktifkan. Jika ingin aktif lagi, ketik START."
+  );
+}
+
+if (upper(body) === "START" || upper(body) === "SUBSCRIBE") {
+  db.customers[customerId].optOut = false;
+  saveDB(db);
+  return replyTwiml(
+    res,
+    "Siap. Follow-up diaktifkan kembali. Silakan tulis keluhan Anda."
+  );
+}
 
   const ticket = getOrCreateTicket(db, customerId, from);
 
