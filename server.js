@@ -1098,10 +1098,10 @@ async function webhookHandler(req, res) {
   }
 
   // ---- MONITOR ----
-  if (isMonitor(from)) {
-    saveDB(db);
-    return , '✅ Monitor aktif.');
-  }
+if (isMonitor(from)) {
+  saveDB(db);
+  return '✅ Monitor aktif.';
+}
 
   // ---- Customer Identity ----
 const customerId = sha16(from);
