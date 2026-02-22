@@ -1401,6 +1401,14 @@ if (MONITOR_WHATSAPP_TO && monitorAllowedByLevel(score)) {
     .catch(err => console.error("notifyMonitor error:", err));
 }
 
+// ===== FIRE & FORGET (ANTI "await is only valid in async") =====
+function fireAndForget(promise, label) {
+  Promise.resolve(promise).catch((err) => {
+    console.error(`[${label}] failed:`, err?.message || err);
+  });
+}
+
+
   // ✅ ADMIN STABIL
   const adminNotifyOn = String(ADMIN_NOTIFY_ENABLED).toLowerCase() === "true";
   if (adminNotifyOn) {
