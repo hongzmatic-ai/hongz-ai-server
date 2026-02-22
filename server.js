@@ -1179,7 +1179,6 @@ if (ticket.lane && ticket.stage === 0 && !ticket.askedFallback) {
   const cmdJadwal = isCommand(body, 'JADWAL');
 
   const noStart = detectNoStart(body);
-  const acMode = detectAC(body);
   const cantDrive = detectCantDrive(body);
   const hasLoc = !!location;
   const priceOnly = detectPriceOnly(body);
