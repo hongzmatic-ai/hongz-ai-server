@@ -1500,16 +1500,9 @@ app.post("/twilio/webhook", async (req, res) => {
 });
 
 app.post("/whatsapp/incoming", async (req, res) => {
-  try {
-    // WAJIB kirim req,res supaya webhookHandler tidak dapat res=undefined
-    const result = await webhookHandler(req, res);
-    console.log("[WHATSAPP INCOMING RESULT]", result);
-    return result;
-  } catch (e) {
-    console.error("webhook error", e?.message || e);
-    return replyTwiml(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
-  }
+  return res.sendStatus(200);
 });
+
 
 // CRON FOLLOW-UP
 app.get('/cron/followup', async (req, res) => {
