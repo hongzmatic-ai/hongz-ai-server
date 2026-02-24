@@ -1143,6 +1143,13 @@ async function webhookHandler(req, res) {
   const from = normalizeFrom(req.body?.From || '');
   const to = normalizeFrom(req.body?.To || '');
   const body = normText(req.body?.Body || '');
+const customerText = body;
+
+// 1) ROUTING cepat (tanpa GPT) — biar gak jadi “anak magang”
+const routed = routeCustomerText(customerText);
+if (routed) {
+  return replyTwiml(res, routed);
+}
   const location = extractLocation(req.body || {});
   const style = detectStyle(body);
 
