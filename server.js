@@ -1136,6 +1136,84 @@ function pushHistory(db, ticket) {
 }
 
 
+// =============================
+// ROUTING CEPAT (TANPA GPT)
+// =============================
+function routeCustomerText(text) {
+  if (!text) return null;
+
+  const t = text.toLowerCase();
+
+  // BOOKING
+  if (t.includes("jadwal") || t.includes("booking")) {
+    return "Siap Bang 🙏 Untuk booking, kirim *tipe mobil + tahun* ya.";
+  }
+
+  // TOWING
+  if (t.includes("towing") || t.includes("dere k")) {
+    return "Siap darurat 🚗 Kirim *lokasi live* sekarang ya Bang.";
+  }
+
+  // ALAMAT
+  if (t.includes("alamat") || t.includes("lokasi")) {
+    return "📍 Hongz Bengkel Matic\nJl. Mohammad Yakub No.10B Medan\nBuka Senin–Sabtu 09.00–17.00";
+  }
+
+  // AC
+  if (t.includes("ac")) {
+    return "AC dingin sebentar lalu panas biasanya:\n1️⃣ Freon kurang\n2️⃣ Magnetic clutch slip\n3️⃣ Extra fan lemah\n\nKirim tipe mobil + tahun ya Bang.";
+  }
+
+  // TRANSMISI
+  if (t.includes("matic") || t.includes("transmisi")) {
+    return "Keluhan matic apa Bang?\n• Nendang?\n• Slip?\n• Delay masuk D?\n\nKirim tipe mobil + tahun ya.";
+  }
+
+  return null; // kalau tidak cocok, lanjut ke GPT
+}
+
+
+// =============================
+// MENU CLOSING A,B,C,D (FAST)
+// =============================
+function routeABCD(text) {
+  if (!text) return null;
+  const t = text.trim().toLowerCase();
+
+  // kalau user ketik hanya A/B/C/D
+  if (t === "a" || t === "a.") {
+    return "✅ *A. Booking Service*\nKirim:\n1) *Tipe mobil + tahun*\n2) Keluhan singkat\n3) Mau datang jam berapa (09.00–17.00)\n\nContoh: *Avanza 2015, matic nendang, jam 10.*";
+  }
+
+  if (t === "b" || t === "b.") {
+    return "✅ *B. Konsultasi Cepat*\nKirim:\n1) *Tipe mobil + tahun*\n2) Gejala (nendang/slip/delay/jedug/bunyi)\n3) Sudah ganti oli matic kapan?\n\nBiar kami arahkan langkah paling cepat.";
+  }
+
+  if (t === "c" || t === "c.") {
+    return "✅ *C. Alamat & Jam Buka*\n📍 Hongz Bengkel Matic\nJl. Mohammad Yakub No.10B Medan\n🕘 Senin–Sabtu 09.00–17.00\n\nKalau mau, ketik *A* untuk booking.";
+  }
+
+  if (t === "d" || t === "d.") {
+    return "✅ *D. Darurat / Towing*\nKirim *lokasi live* + patokan (dekat apa) sekarang ya Bang.\nKalau mobil masih bisa jalan pelan, sebutkan *bisa jalan atau tidak*.";
+  }
+
+  return null;
+}
+
+// Pesan menu utama (dipakai untuk balasan pertama / keyword "menu")
+function mainMenuText() {
+  return (
+`Siap Bang 🙏 *Hongz Bengkel Matic*\n` +
+`Pilih 1:\n` +
+`*A.* Booking Service (langsung jadwal)\n` +
+`*B.* Konsultasi Cepat (langsung solusi)\n` +
+`*C.* Alamat & Jam Buka\n` +
+`*D.* Darurat / Towing\n\n` +
+`Balas cukup: *A / B / C / D*`
+  );
+}
+
+
 // ---------------- MAIN WEBHOOK ----------------
 async function webhookHandler(req, res) {
   const db = loadDB();
