@@ -194,7 +194,7 @@ const {
   FOLLOWUP_MAX_PER_CUSTOMER = '2',
 
   // Storage / cron / debug
-  DATA_DIR = process.env.DATA_DIR || '/tmp',
+  
   CRON_KEY = '',
   DEBUG = 'false',
 } = process.env;
