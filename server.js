@@ -1223,6 +1223,19 @@ async function webhookHandler(req, res) {
   const body = normText(req.body?.Body || '');
 const customerText = body;
 
+const textLower = customerText.trim().toLowerCase();
+
+// ===== MENU ABCD =====
+const abcd = routeABCD(textLower);
+if (abcd) {
+  return replyTwiml(res, abcd);
+}
+
+// ===== KEYWORD MENU =====
+if (["menu","start","halo","hai","help","mulai"].includes(textLower)) {
+  return replyTwiml(res, mainMenuText());
+}
+
 // 1) ROUTING cepat (tanpa GPT) — biar gak jadi “anak magang”
 const routed = routeCustomerText(customerText);
 if (routed) {
