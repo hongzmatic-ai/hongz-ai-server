@@ -7,7 +7,28 @@ v/**
  * deps: express, body-parser, twilio, openai (^4)
  */
 
-const express = require('express');
+const express = require("express");
+const admin = require("firebase-admin");
+
+function initFirestore() {
+  if (process.env.FIRESTORE_ENABLED !== "true") return null;
+  if (admin.apps.length) return admin.firestore();
+
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON");
+  const serviceAccount = JSON.parse(raw);
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+
+  const db = admin.firestore();
+  db.settings({ ignoreUndefinedProperties: true });
+  return db;
+}
+
+const fsdb = initFirestore(); // null kalau belum diaktifkan
+
 const bodyParser = require('body-parser');
 const twilio = require('twilio');
 const fs = require('fs');
