@@ -1314,7 +1314,7 @@ if (upper(body) === "START" || upper(body) === "SUBSCRIBE") {
 
   const ticket = getOrCreateTicket(db, customerId, from);
 const acMode = detectAC(body);
-const textLower = String(body || "").trim().toLowerCase();
+
 
 // ===== TOPIC STICKY: kalau ada keyword AC, set ticket.type = 'AC' =====
 if (/\bac\b|freon|kompresor|blower|extra fan|kipas|dingin|panas/.test(textLower)) {
