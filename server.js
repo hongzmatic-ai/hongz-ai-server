@@ -1,4 +1,4 @@
-/**
+v/**
  * HONGZ AI SERVER ...
  */
 
@@ -1234,22 +1234,27 @@ async function webhookHandler(req, res) {
   const body = normText(req.body?.Body || '');
 const customerText = body;
 
-const textLower = customerText.trim().toLowerCase();
+
+const body = normText(req.body?.Body || '');
+const customerText = body;
 
 // ===== SECURITY LAYER =====
 
-// batasi panjang pesan (anti spam panjang / prompt injection)
+// batasi panjang pesan
 if (customerText.length > 800) {
   return replyTwiml(res, "Pesan terlalu panjang Bang 🙏 Mohon kirim ringkas ya.");
 }
 
-// buang karakter aneh berbahaya
+// buang karakter berbahaya
 const safeText = customerText.replace(/[<>`]/g, "");
 
-// kalau kosong setelah dibersihkan
+// kalau kosong
 if (!safeText.trim()) {
   return replyTwiml(res, "Silakan tulis keluhan mobilnya ya Bang.");
 }
+
+// ===== setelah aman baru bikin lower =====
+const textLower = safeText.trim().toLowerCase();
 
 
 // ===== MENU ABCD =====
