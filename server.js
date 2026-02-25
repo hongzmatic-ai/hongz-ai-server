@@ -1276,8 +1276,6 @@ async function webhookHandler(req, res) {
 const customerText = body;
 
 
-const body = normText(req.body?.Body || '');
-const customerText = body;
 
 // ===== SECURITY LAYER =====
 
