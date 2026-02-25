@@ -1237,7 +1237,7 @@ if (["menu","start","halo","hai","help","mulai"].includes(textLower)) {
 }
 
 // 1) ROUTING cepat (tanpa GPT) — biar gak jadi “anak magang”
-const routed = routeCustomerText(customerText);
+const routed = routeCustomerText(customerText, ticket.type);
 if (routed) {
   return replyTwiml(res, routed);
 }
