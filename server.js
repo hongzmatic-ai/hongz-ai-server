@@ -1137,8 +1137,18 @@ function pushHistory(db, ticket) {
 
 
 function routeCustomerText(text, topic = 'GENERAL') {
-  if (!text) return null;
-  const t = String(text).toLowerCase();
+  const t = String(text || '').trim().toLowerCase();
+
+// ===== AC STICKY =====
+if (topic === 'AC' || /\bac\b|freon|kompresor|blower|extra fan|kipas|dingin|panas/.test(t)) {
+  return (
+    "Siap Bang. Untuk *AC dingin sebentar lalu panas + kompresor kasar*, saya perlu 3 info:\n" +
+    "1) Saat mulai panas, kompresor masih nyambung (klik) atau putus?\n" +
+    "2) Extra fan depan radiator nyala kencang atau tidak?\n" +
+    "3) Pernah servis AC kapan?\n\n" +
+    "Kalau mau cepat beres: ketik *A* untuk booking ya Bang."
+  );
+}
 
   // BOOKING
   if (t.includes("jadwal") || t.includes("booking")) {
