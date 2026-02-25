@@ -1314,6 +1314,22 @@ if (upper(body) === "START" || upper(body) === "SUBSCRIBE") {
 
   const ticket = getOrCreateTicket(db, customerId, from);
 const acMode = detectAC(body);
+const textLower = String(body || "").trim().toLowerCase();
+
+// ===== TOPIC STICKY: kalau ada keyword AC, set ticket.type = 'AC' =====
+if (/\bac\b|freon|kompresor|blower|extra fan|kipas|dingin|panas/.test(textLower)) {
+  updateTicket(ticket, { type: 'AC' });
+}
+
+// ===== kalau ada keyword booking/jadwal, set type = 'JADWAL' (opsional) =====
+if (/jadwal|booking|antri|jam berapa/.test(textLower)) {
+  updateTicket(ticket, { type: 'JADWAL' });
+}
+
+// ===== kalau darurat/towing, set type = 'TOWING' (opsional) =====
+if (/towing|derek|mogok|gak bisa jalan|stuck/.test(textLower)) {
+  updateTicket(ticket, { type: 'TOWING' });
+}
 
 // ===============================
 // Anti-ulang fallback (hanya 1x)
