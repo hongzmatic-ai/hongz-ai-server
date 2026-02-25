@@ -1136,13 +1136,9 @@ function pushHistory(db, ticket) {
 }
 
 
-// =============================
-// ROUTING CEPAT (TANPA GPT)
-// =============================
-function routeCustomerText(text) {
+function routeCustomerText(text, topic = 'GENERAL') {
   if (!text) return null;
-
-  const t = text.toLowerCase();
+  const t = String(text).toLowerCase();
 
   // BOOKING
   if (t.includes("jadwal") || t.includes("booking")) {
@@ -1150,7 +1146,7 @@ function routeCustomerText(text) {
   }
 
   // TOWING
-  if (t.includes("towing") || t.includes("dere k")) {
+  if (t.includes("towing") || t.includes("derek")) {
     return "Siap darurat 🚗 Kirim *lokasi live* sekarang ya Bang.";
   }
 
@@ -1159,19 +1155,24 @@ function routeCustomerText(text) {
     return "📍 Hongz Bengkel Matic\nJl. Mohammad Yakub No.10B Medan\nBuka Senin–Sabtu 09.00–17.00";
   }
 
-  // AC
-  if (t.includes("ac")) {
-    return "AC dingin sebentar lalu panas biasanya:\n1️⃣ Freon kurang\n2️⃣ Magnetic clutch slip\n3️⃣ Extra fan lemah\n\nKirim tipe mobil + tahun ya Bang.";
+  // ===== AC (topic sticky) =====
+  if (topic === 'AC' || /\bac\b|freon|kompresor|blower|extra fan|kipas|dingin|panas/.test(t)) {
+    return (
+      "Siap Bang. Untuk *AC dingin sebentar lalu panas + kompresor kasar*, saya perlu 3 info:\n" +
+      "1) Saat mulai panas, kompresor masih nyambung (klik) atau putus?\n" +
+      "2) Extra fan depan radiator nyala kencang atau tidak?\n" +
+      "3) Pernah servis AC kapan?\n\n" +
+      "Kalau mau cepat beres: ketik *JADWAL* untuk booking ya Bang."
+    );
   }
 
   // TRANSMISI
   if (t.includes("matic") || t.includes("transmisi")) {
-    return "Keluhan matic apa Bang?\n• Nendang?\n• Slip?\n• Delay masuk D?\n\nKirim tipe mobil + tahun ya.";
+    return "Keluhan matic apa Bang?\n• Nendang?\n• Slip?\n• Delay masuk D?\n\nKirim *tipe mobil + tahun* ya.";
   }
 
   return null; // kalau tidak cocok, lanjut ke GPT
 }
-
 
 // =============================
 // MENU CLOSING A,B,C,D (FAST)
