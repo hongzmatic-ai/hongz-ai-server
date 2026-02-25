@@ -224,19 +224,39 @@ app.use(bodyParser.json());
 function ensureDir(dir) {
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
 }
+
+const DATA_DIR = process.env.DATA_DIR || "./data";
 ensureDir(DATA_DIR);
 
-const DB_FILE = path.join(DATA_DIR, 'hongz_enterprise_db.json');
+const DB_FILE = path.join(DATA_DIR, "hongz_enterprise_db.json");
 
-function loadDB() {
-  try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
-  catch (_) { return { customers: {}, tickets: {}, events: [] }; }
-}
-function saveDB(db) {
-  try { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8'); }
-  catch (e) { console.error('DB save failed:', e.message); }
+function loadDBFile() {
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  } catch (_) {
+    return { customers: {}, tickets: {}, events: [] };
+  }
 }
 
+function saveDBFile(db) {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf8");
+  } catch (e) {
+    console.error("DB save failed:", e.message);
+  }
+}
+
+// Firestore hybrid (airbag)
+async function loadDB() {
+  if (!fsdb) return loadDBFile();
+  const snap = await fsdb.collection("app").doc("db").get();
+  return snap.exists ? snap.data() : { customers: {}, tickets: {}, events: [] };
+}
+
+async function saveDB(db) {
+  if (!fsdb) return saveDBFile(db);
+  await fsdb.collection("app").doc("db").set(db, { merge: true });
+}
 function nowISO() { return new Date().toISOString(); }
 function nowMs() { return Date.now(); }
 
