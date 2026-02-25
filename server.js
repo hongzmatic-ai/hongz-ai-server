@@ -1236,6 +1236,22 @@ const customerText = body;
 
 const textLower = customerText.trim().toLowerCase();
 
+// ===== SECURITY LAYER =====
+
+// batasi panjang pesan (anti spam panjang / prompt injection)
+if (customerText.length > 800) {
+  return replyTwiml(res, "Pesan terlalu panjang Bang 🙏 Mohon kirim ringkas ya.");
+}
+
+// buang karakter aneh berbahaya
+const safeText = customerText.replace(/[<>`]/g, "");
+
+// kalau kosong setelah dibersihkan
+if (!safeText.trim()) {
+  return replyTwiml(res, "Silakan tulis keluhan mobilnya ya Bang.");
+}
+
+
 // ===== MENU ABCD =====
 const abcd = routeABCD(textLower);
 if (abcd) {
