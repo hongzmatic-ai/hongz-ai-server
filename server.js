@@ -1,133 +1,57 @@
 /*
  * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — RAJA MEDAN FINAL (STABLE)
  * deps: express, body-parser, twilio, openai (^4)
+ * optional: firebase-admin (only if FIRESTORE_ENABLED="true")
  */
 
 const express = require("express");
-const admin = require("firebase-admin");
 
+// ---- firebase-admin OPTIONAL (biar gak crash kalau belum diinstall) ----
+let admin = null;
 function initFirestore() {
   if (process.env.FIRESTORE_ENABLED !== "true") return null;
-  if (admin.apps.length) return admin.firestore();
 
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (!raw) throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON");
-  const serviceAccount = JSON.parse(raw);
+  try {
+    // require di dalam try supaya kalau module gak ada -> fallback JSON
+    admin = require("firebase-admin");
+  } catch (e) {
+    console.warn("[Firestore] firebase-admin not installed. Fallback to JSON file DB.");
+    return null;
+  }
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
+  try {
+    if (admin.apps.length) return admin.firestore();
 
-  const db = admin.firestore();
-  db.settings({ ignoreUndefinedProperties: true });
-  return db;
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    if (!raw) {
+      console.warn("[Firestore] Missing FIREBASE_SERVICE_ACCOUNT_JSON. Fallback to JSON file DB.");
+      return null;
+    }
+
+    const serviceAccount = JSON.parse(raw);
+
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+
+    const db = admin.firestore();
+    db.settings({ ignoreUndefinedProperties: true });
+    return db;
+  } catch (e) {
+    console.warn("[Firestore] init failed. Fallback to JSON file DB:", e?.message || e);
+    return null;
+  }
 }
 
-const fsdb = initFirestore(); // null kalau belum diaktifkan
+const fsdb = initFirestore(); // null kalau belum diaktifkan / module belum ada
 
-const bodyParser = require('body-parser');
-const twilio = require('twilio');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
+const bodyParser = require("body-parser");
+const twilio = require("twilio");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 
 const OpenAI = require("openai");
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-function buildClosingSystemPrompt() {
-  return `
-Anda adalah Senior Technical Advisor + CS Profesional untuk "Hongz Bengkel Spesialis Transmisi Matic" di Medan.
-
-IDENTITAS:
-- Spesialis transmisi matic, CVT, torque converter, valve body
-- Fokus solusi, bukan coba-coba
-- Profesional, transparan, bergaransi
-
-GAYA KOMUNIKASI:
-- Ramah tapi tegas
-- Profesional (bukan gaya anak magang)
-- Bahasa WhatsApp natural
-- Tidak bertele-tele
-- Maksimal 8–12 baris (kecuali benar-benar perlu)
-
-ATURAN DIAGNOSA:
-- Jawab dengan struktur A-B-C-D (WAJIB)
-- Tanyakan maksimal 2–4 pertanyaan kunci (jangan kebanyakan)
-- Jangan mengada-ngada
-- Jika info kurang → minta detail spesifik
-- Jangan mengulang pertanyaan yang sudah dijawab pelanggan
-- Jangan bahas AC kalau pelanggan sedang tanya matic (kecuali pelanggan memang tanya AC)
-
-FORMAT JAWABAN (A-B-C-D):
-A) Analisa kemungkinan penyebab (maks 3 poin, paling mungkin dulu)
-B) Pertanyaan klarifikasi (2–4 pertanyaan kunci)
-C) Langkah aman yang bisa dilakukan sekarang (opsional, singkat)
-D) Arahkan tindakan: booking / datang cek / kirim video / towing jika darurat
-
-JIKA PELANGGAN TANYA HARGA:
-- Jelaskan value: diagnosa akurat, transparan, garansi
-- Ajak cek langsung agar pasti (hindari janji harga sebelum diagnosa)
-
-SELALU tutup dengan CTA singkat:
-Balas: JADWAL / MAPS / TOWING
-
-CATATAN:
-- Jika pelanggan hanya kirim “halo/tes/123”, balas singkat & arahkan ke keluhan utama.
-- Jangan terlalu “sales”, tetap dominan teknisi/diagnosa center.
-`.trim();
-}
-async function gptReply({ customerText, memoryText = "", lane = "GENERAL" }) {
-  const model = process.env.AI_MODEL || "gpt-4.1-mini";
-  const maxTokens = Number(process.env.MAX_OUT_TOKENS || 260);
-  const temperature = Number(process.env.TEMPERATURE || 0.4);
-
-  const messages = [
-    { role: "system", content: buildClosingSystemPrompt() },
-    ...(memoryText ? [{ role: "system", content: `MEMORY PELANGGAN:\n${memoryText}` }] : []),
-    { role: "user", content: `LANE: ${lane}\nPESAN PELANGGAN:\n${customerText}` },
-  ];
-
-  const resp = await openai.chat.completions.create({
-    model,
-    messages,
-    temperature,
-    max_tokens: maxTokens,
-  });
-
-  return resp.choices?.[0]?.message?.content?.trim() || "";
-}
-
-// ===== Build AI Context dari Memory =====
-function buildAIContext(db, customerId, body) {
-  const customer = db.customers[customerId];
-  if (!customer) return body;
-
-  const profile = customer.profile || {};
-  const history = customer.history || [];
-
-  const historyText = history
-    .slice(-5)
-    .map((h, i) => `${i + 1}. ${h.issue || ""}`)
-    .join("\n");
-
-  return `
-DATA PELANGGAN:
-Nama: ${profile.name || "-"}
-Mobil: ${profile.car || "-"}
-Kota: ${profile.city || "-"}
-Keluhan Terakhir: ${profile.lastIssue || "-"}
-
-RIWAYAT SINGKAT:
-${historyText || "-"}
-
-PESAN TERBARU:
-${body}
-
-Jawab sebagai asisten bengkel profesional Hongz Bengkel Matic.
-Fokus solusi, jelas, dan jangan ulang pertanyaan yang sudah dijawab.
-`;
-}
-
 
 // ---------------- ENV (SAFE) ----------------
 const {
@@ -162,6 +86,8 @@ const OPENAI_TIMEOUT_MS_FINAL     = Number(OPENAI_TIMEOUT_MS || 9000);
 const OPENAI_MAXTOKENS_FINAL      = Number(OPENAI_MAX_OUTPUT_TOKENS || 260);
 const OPENAI_TEMPERATURE_FINAL    = Number(OPENAI_TEMPERATURE || 0.30);
 
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+
 // ---------- Arena / routing ----------
 const ARENA_CONTROL_ENABLED = process.env.ARENA_CONTROL_ENABLED || "true";
 const PRIORITY_ROUTING      = process.env.PRIORITY_ROUTING || "1,2,3,4";
@@ -184,12 +110,10 @@ const DATA_DIR_FINAL = DATA_DIR || "./data";
 // ---------- Debug ----------
 const IS_DEBUG = String(DEBUG || "false").toLowerCase() === "true";
 
-
 // ---------------- APP ----------------
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false })); // Twilio form-urlencoded
 app.use(bodyParser.json());
-
 
 // ---------------- LOCATION PARSER ----------------
 function extractMapsLink(reqBody) {
@@ -223,7 +147,6 @@ function extractLocation(reqBody) {
   return null;
 }
 
-
 // ---------------- STORAGE (FINAL - SAFE) ----------------
 function ensureDir(dir) {
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
@@ -245,13 +168,11 @@ function saveDBFile(db) {
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf8");
   } catch (e) {
-    console.error("DB save failed:", e.message);
+    console.error("DB save failed:", e?.message || e);
   }
 }
 
 // Firestore hybrid (airbag)
-// NOTE: fsdb harus didefinisikan di bagian initFirestore kamu.
-// Kalau fsdb belum ada, aman karena fallback ke file JSON.
 async function loadDB() {
   if (!fsdb) return loadDBFile();
   const snap = await fsdb.collection("app").doc("db").get();
@@ -262,7 +183,6 @@ async function saveDB(db) {
   if (!fsdb) return saveDBFile(db);
   await fsdb.collection("app").doc("db").set(db, { merge: true });
 }
-
 
 // ---------------- HELPERS (SAFE) ----------------
 function nowISO() { return new Date().toISOString(); }
