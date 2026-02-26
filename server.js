@@ -1671,13 +1671,16 @@ app.get('/cron/followup', async (req, res) => {
   try {
     const key = String(req.query.key || '');
     if (!CRON_KEY || key !== CRON_KEY) return res.status(403).send('Forbidden');
-    if (String(FOLLOWUP_ENABLED).toLowerCase() !== 'true') return res.status(200).send('Follow-up disabled');
+    if (String(FOLLOWUP_ENABLED).toLowerCase() !== 'true')
+      return res.status(200).send('Follow-up disabled');
 
-    const db = loadDB();
+    const db = await loadDB(); // ✅ FIX
     const tickets = Object.values(db.tickets || {});
     let sent = 0;
 
     for (const t of tickets) {
+      if (!t.from) continue;
+
       const cust = db.customers?.[t.customerId];
       if (cust?.optOut) continue;
       if (t.status === 'CLOSED') continue;
@@ -1698,7 +1701,7 @@ app.get('/cron/followup', async (req, res) => {
       }
     }
 
-    saveDB(db);
+    await saveDB(db); // ✅ FIX
     return res.status(200).send(`Follow-up sent: ${sent}`);
   } catch (e) {
     console.error('cron/followup error:', e?.message || e);
