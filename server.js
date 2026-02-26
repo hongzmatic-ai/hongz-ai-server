@@ -256,6 +256,7 @@ function signatureShort() {
 
 function signatureTowing(style = '3') {
   const s = String(style || '3');
+
   if (s === '2') {
     return [
       `— ${BIZ_NAME}`,
@@ -263,6 +264,7 @@ function signatureTowing(style = '3') {
       `Ketik *TOWING* + kirim *share lokasi*`,
     ].join('\n');
   }
+
   if (s === '1') {
     return [
       `— ${BIZ_NAME}`,
@@ -271,6 +273,7 @@ function signatureTowing(style = '3') {
       `Jika perlu cepat: klik Admin lalu bisa *telepon/voice call*.`,
     ].join('\n');
   }
+
   return [
     `— ${BIZ_NAME} (Precision Transmission Center)`,
     `📲 Admin prioritas: ${WHATSAPP_ADMIN}`,
@@ -278,44 +281,20 @@ function signatureTowing(style = '3') {
   ].join('\n');
 }
 
-function signatureTowing(style = '3') {
-  const s = String(style || '3');
-  if (s === '2') {
-    return [
-      `— ${BIZ_NAME}`,
-      `📲 Admin cepat: ${WHATSAPP_ADMIN}`,
-      `Ketik *TOWING* + kirim *share lokasi*`,
-    ].join('\n');
-  }
-  if (s === '1') {
-    return [
-      `— ${BIZ_NAME}`,
-      `⏱ ${BIZ_HOURS}`,
-      `📲 Admin: ${WHATSAPP_ADMIN}`,
-      `Jika perlu cepat: klik Admin lalu bisa *telepon/voice call*.`,
-    ].join('\n');
-  }
-  return [
-    `— ${BIZ_NAME} (Precision Transmission Center)`,
-    `📲 Admin prioritas: ${WHATSAPP_ADMIN}`,
-    `⚡ Darurat? Klik Admin untuk *voice call* (lebih cepat koordinasi).`,
-  ].join('\n');
-}
-
-// ---------------- DETECTORS (anti nyasar) ----------------
+// ---------------- DETECTORS ----------------
 function detectNoStart(body) {
   const t = String(body || '').toLowerCase();
-  return /tidak bisa hidup|gak bisa hidup|ga bisa hidup|tidak bisa starter|gak bisa starter|ga bisa starter|distarter|starter bunyi|cekrek|ngorok|aki tekor|accu tekor|lampu redup/i.test(t);
+  return /tidak bisa hidup|gak bisa hidup|ga bisa hidup|starter|aki tekor|accu tekor|lampu redup/i.test(t);
 }
 
 function detectCantDrive(body) {
   const t = String(body || '').toLowerCase();
-  return /tidak bisa jalan|ga bisa jalan|gak bisa jalan|tidak bisa bergerak|ga bisa bergerak|gak bisa bergerak|stuck|macet total|selip parah|rpm naik tapi tidak jalan|masuk d.*tidak jalan|masuk r.*tidak jalan|d masuk tapi tidak jalan|r masuk tapi tidak jalan|dorong|tarik|angkut|towing|evakuasi/i.test(t);
+  return /tidak bisa jalan|ga bisa jalan|gak bisa jalan|stuck|macet total|rpm naik tapi tidak jalan|towing|evakuasi/i.test(t);
 }
 
 function detectAC(body) {
   const t = String(body || '').toLowerCase();
-  return /(^|\b)ac(\b|$)|freon|kompresor|blower|evaporator|kondensor|kipas ac|ac tidak dingin|ga dingin|gak dingin|dingin sebentar|panas lagi/i.test(t);
+  return /\bac\b|freon|kompresor|blower|evaporator|kondensor|ac tidak dingin|dingin sebentar|panas lagi/i.test(t);
 }
 
 function detectPriceOnly(body) {
@@ -323,279 +302,66 @@ function detectPriceOnly(body) {
 }
 
 function detectPremium(body) {
-  return /land cruiser|alphard|vellfire|lexus|bmw|mercedes|benz|audi|porsche|range rover|land rover|prado|lc200|lc300|rx350|mini cooper/i.test(String(body || '').toLowerCase());
+  return /alphard|vellfire|lexus|bmw|mercedes|audi|land cruiser|rx350/i.test(String(body || '').toLowerCase());
 }
 
 function detectBuyingSignal(body) {
-  return /kapan bisa|besok bisa|hari ini bisa|bisa masuk|siap datang|jam berapa|jam buka|alamat dimana|lokasi dimana|maps|alamat|lokasi|antri|slot|jadwal|booking/i.test(String(body || '').toLowerCase());
+  return /jadwal|booking|bisa masuk|hari ini|besok bisa|jam berapa|alamat|lokasi|maps/i.test(String(body || '').toLowerCase());
 }
 
 function hasVehicleInfo(body) {
   const t = String(body || '').toLowerCase();
-  const hasYear = /\b(19[8-9]\d|20[0-3]\d)\b/.test(t);
-  const hasBrand = /toyota|honda|nissan|mitsubishi|suzuki|daihatsu|mazda|hyundai|kia|wuling|bmw|mercedes|audi|lexus|isuzu/i.test(t);
-  const hasModelCue = /innova|avanza|rush|fortuner|alphard|vellfire|freed|odyssey|mobilio|x-trail|ertiga|brio|civic|camry|yaris|calya|agya|ayla|sigra|rocky|raize|almaz|livina|xpander|pajero|lc200|lc300|rx350|minicooper/i.test(t);
-  return hasYear || hasBrand || hasModelCue;
+  const hasYear = /\b(19\d{2}|20\d{2})\b/.test(t);
+  const hasBrand = /toyota|honda|nissan|mitsubishi|suzuki|daihatsu|mazda|hyundai|kia|wuling|bmw|mercedes|audi|lexus/i.test(t);
+  return hasYear || hasBrand;
 }
 
 function hasSymptomInfo(body) {
   const t = String(body || '').toLowerCase();
-  // gejala transmisi khusus
-  return /rpm naik tapi tidak jalan|selip|jedug|hentak|telat masuk|telat gigi|ngelos|overheat transmisi|bau gosong|gigi d|gigi r|valve body|torque converter|atf|oli transmisi/i.test(t);
-}
-
-function askedForSchedule(body) {
-  return /kapan bisa masuk|jadwal|booking|bisa hari|bisa jam|kapan bisa datang|antri|slot/i.test(String(body || '').toLowerCase());
+  return /nendang|selip|jedug|hentak|delay|ngelos|overheat|bau gosong|valve body|torque converter|atf/i.test(t);
 }
 
 // ---------------- STYLE ----------------
 function detectStyle(body) {
-  const t = String(body || '');
-  const low = t.toLowerCase();
+  const t = String(body || '').toLowerCase();
 
-  const panic = /darurat|tolong|cepat|mogok|tidak bisa|gak bisa|ga bisa|stuck|bahaya/i.test(low);
-  const formal = /mohon|berkenan|apabila|dengan hormat|terima kasih|pak|bu|bapak|ibu/i.test(low);
-  const hasEmoji = /[\u{1F300}-\u{1FAFF}]/u.test(t);
-  const short = low.length <= 18;
+  if (/darurat|tolong|cepat|mogok|bahaya/i.test(t)) return 'urgent';
+  if (/mohon|berkenan|terima kasih|bapak|ibu/i.test(t)) return 'formal';
+  if (t.length < 20) return 'casual';
 
-  if (panic) return 'urgent';
-  if (formal) return 'formal';
-  if (hasEmoji || short) return 'casual';
   return 'neutral';
 }
 
 function composeTone(style) {
   if (style === 'urgent') return 'tenang, sigap, menenangkan';
-  if (style === 'formal') return 'sopan, profesional, rapi';
-  if (style === 'casual') return 'ramah, santai, natural';
-  return 'ramah-profesional, natural, enak dibaca';
+  if (style === 'formal') return 'sopan, profesional';
+  if (style === 'casual') return 'ramah, santai';
+  return 'ramah-profesional';
 }
 
-// ---------------- 3T + 3M ----------------
-function detect3T3M(body) {
-  const t = String(body || '').toLowerCase();
-  const murah = /(murah|termurah|diskon|promo|nego|tawar|budget|harga aja|biaya aja)/i.test(t);
-  const meriah = /(paket|bonus|murah meriah|harga paket)/i.test(t);
-  const mantap = /(pokoknya harus beres|harus jadi|yang penting jadi|langsung beres|pasti sembuh|jamin pasti)/i.test(t);
+// ---------------- ARENA CLASSIFY ----------------
+function arenaClassify({ body }) {
 
-  const tanya2 = /(berapa|biaya|harga|kisaran|range|estimasi)/i.test(t) && t.length < 80;
-  const tes2 = /(yakin bisa|bisa gak sih|bengkel lain|coba jelasin|jangan bohong|kok mahal)/i.test(t);
-  const tawar2 = /(nego|tawar|diskon|kurangin|murahin)/i.test(t);
-
-  const hit = (murah || meriah || mantap || tanya2 || tes2 || tawar2);
-  return { murah, meriah, mantap, tanya2, tes2, tawar2, hit };
-}
-
-// ---------------- ADMIN KEYWORDS ----------------
-const DEFAULT_ADMIN_KEYWORDS =
-  'tidak bisa jalan,gak bisa jalan,ga bisa jalan,stuck,selip,rpm naik tapi tidak jalan,towing,evakuasi,dorong,tarik,angkut,jadwal,booking,bisa masuk,hari ini bisa,besok bisa,jam berapa,kapan bisa,alamat,lokasi,maps,jedug,hentak,overheat,diagnosa,tidak bisa hidup,gak bisa hidup,ga bisa hidup,ac tidak dingin';
-
-function parseKeywords(csv) {
-  return String(csv || '')
-    .split(',')
-    .map(s => s.trim().toLowerCase())
-    .filter(Boolean);
-}
-const ADMIN_KWS = parseKeywords(ADMIN_NOTIFY_KEYWORDS || DEFAULT_ADMIN_KEYWORDS);
-
-function matchAdminKeyword(text) {
-  const t = String(text || '').toLowerCase();
-  if (!t) return null;
-  for (const kw of ADMIN_KWS) {
-    if (kw && t.includes(kw)) return kw;
-  }
-  return null;
-}
-
-// ---------------- ARENA ----------------
-function parsePriorityRouting(csv) {
-  const arr = String(csv || '1,2,3,4').split(',').map(s => s.trim()).filter(Boolean);
-  const valid = new Set(['1','2','3','4']);
-  return arr.filter(x => valid.has(x));
-}
-
-function isLowEnergy(body) {
-  const t = String(body || '').trim().toLowerCase();
-  if (!t) return true;
-  if (t.length <= 2) return true;
-  return /^(p|halo|hai|test|tes|cek|cek\stest|\?)$/.test(t);
-}
-
-function arenaClassify({ body, hasLoc, cantDrive, cmdTowing, cmdJadwal, buyingSignal, scheduleAsk, priceOnly, vInfo, sInfo, suspicious }) {
   if (detectAC(body)) return { lane: 'AC', reason: 'AC_MODE' };
   if (detectNoStart(body)) return { lane: 'NO_START', reason: 'ENGINE_NO_START' };
+  if (detectCantDrive(body)) return { lane: 'URGENT', reason: 'CANT_DRIVE' };
+  if (detectBuyingSignal(body)) return { lane: 'BOOKING', reason: 'BOOKING_SIGNAL' };
+  if (detectPriceOnly(body)) return { lane: 'PRICE_TEST', reason: 'PRICE_ONLY' };
+  if (hasVehicleInfo(body) || hasSymptomInfo(body)) return { lane: 'TECHNICAL', reason: 'VEHICLE_OR_SYMPTOM' };
 
-  if (hasLoc || cantDrive || cmdTowing) return { lane: 'URGENT', reason: hasLoc ? 'HAS_LOCATION' : (cantDrive ? 'CANT_DRIVE' : 'TOWING_CMD') };
-  if (cmdJadwal || scheduleAsk || buyingSignal) return { lane: 'BOOKING', reason: cmdJadwal ? 'JADWAL_CMD' : 'ASK_SCHEDULE' };
-  if (priceOnly || suspicious) return { lane: 'PRICE_TEST', reason: priceOnly ? 'PRICE_ONLY' : 'SUSPICIOUS' };
-  if (vInfo || sInfo) return { lane: 'TECHNICAL', reason: (vInfo && sInfo) ? 'VEHICLE+SYMPTOM' : (vInfo ? 'VEHICLE_INFO' : 'SYMPTOM_INFO') };
-  if (isLowEnergy(body)) return { lane: 'LOW_ENERGY', reason: 'LOW_SIGNAL' };
   return { lane: 'GENERAL', reason: 'DEFAULT' };
 }
 
-// quick replies
-function arenaReplyLowEnergy(style) {
-  return [
-    'Siap Bang. Biar saya arahkan cepat—mobilnya apa & tahun berapa?',
-    'Keluhannya singkat saja (contoh: **tidak bisa hidup / AC tidak dingin / tidak bisa jalan**).',
-    '',
-    confidenceLine(style),
-    '',
-    signatureShort(),
-  ].join('\n');
-}
-
-function arenaReplyPriceSoft(style) {
-  return [
-    'Untuk biaya, tergantung penyebabnya—kami hindari tebak-tebakan.',
-    'Boleh info *mobil & tahun* + *keluhan utama* (1 kalimat) biar saya arahkan langkah paling tepat?',
-    '',
-    confidenceLine(style),
-    '',
-    signatureShort(),
-  ].join('\n');
-}
-
-function arenaReplyPriceLock(style) {
-  return [
-    'Untuk harga yang akurat, kami tidak bisa tebak-tebakan tanpa diagnosa.',
-    'Mohon kirim *Mobil + Tahun + Keluhan utama* (1 kalimat saja).',
-    'Kalau sudah siap datang, ketik *JADWAL* biar kami bantu atur jadwal cek.',
-    '',
-    confidenceLine(style),
-    '',
-    signatureShort(),
-  ].join('\n');
-}
-
-function arenaReplyBookingFast(style) {
-  return [
-    'Siap. Untuk booking pemeriksaan, kirim data singkat ya:',
-    '1) Nama  2) Mobil & tahun  3) Keluhan utama  4) Rencana datang (hari & jam)',
-    '',
-    'Setelah data masuk, admin konfirmasi antrian & estimasi waktu pengecekan.',
-    '',
-    confidenceLine(style),
-    '',
-    signatureShort(),
-  ].join('\n');
-}
-
-// ---------------- SUN TZU (Bunglon/Buaya/Elang/Pemancing) ----------------
-function sunTzuScan(body) {
-  const t = String(body || '').toLowerCase().trim();
-
-  const vInfo = hasVehicleInfo(t);
-  const sInfo = hasSymptomInfo(t);
-  const cantDrive = detectCantDrive(t);
-  const noStart = detectNoStart(t);
-  const acScan = detectAC(t);
-
-  const priceOnlyShort = detectPriceOnly(t) && t.length < 35;
-  const egoTest = /(bengkel lain|katanya|emang bisa|yakin|kok mahal|jangan bohong|coba jelasin)/i.test(t);
-  const hesitant = /(lihat dulu|nanti dulu|sekadar tanya|cuma tanya|belum tentu|masih mikir)/i.test(t);
-  const urgency = /(darurat|tolong|cepat|bahaya|stuck)/i.test(t);
-  const buyingSignal = detectBuyingSignal(t);
-  const scheduleAsk = askedForSchedule(t);
-
-  let score = 0;
-  if (vInfo) score += 2;
-  if (sInfo) score += 2;
-  if (buyingSignal || scheduleAsk) score += 3;
-  if (cantDrive) score += 4;
-  if (noStart) score += 4;
-  if (acMode) score += 2;
-  if (urgency) score += 2;
-
-  if (priceOnlyShort) score -= 2;
-  if (hesitant) score -= 1;
-
-  score = Math.max(0, Math.min(10, score));
-
-  let intent = 'GENERAL';
-  if (acMode) intent = 'AC';
-  else if (noStart) intent = 'NO_START';
-  else if (cantDrive || urgency) intent = 'URGENT';
-  else if (buyingSignal || scheduleAsk) intent = 'BOOKING';
-  else if (priceOnlyShort || egoTest) intent = 'PRICE_TEST';
-  else if (vInfo || sInfo) intent = 'TECHNICAL';
-
-  let commander = 'BUNGLON';
-  if (intent === 'URGENT') commander = 'ELANG';
-  else if (intent === 'PRICE_TEST' || egoTest) commander = 'BUAYA';
-  else if (intent === 'BOOKING') commander = 'PEMANCING';
-
-  let pressure = 'SOFT';
-  if (score >= 7 && (intent === 'BOOKING' || intent === 'URGENT')) pressure = 'FIRM';
-
-  return { score, intent, commander, pressure, flags: { vInfo, sInfo, cantDrive, noStart, acMode } };
-}
-
-// ---------------- TICKET MODEL ----------------
-function genTicketId() {
-  const n = Math.floor(10000 + Math.random() * 89999);
-  return `T-${n}`;
-}
-
-function getOrCreateTicket(db, customerId, from) {
-  const cust = db.customers[customerId];
-  const currentTicketId = cust?.activeTicketId;
-
-  if (currentTicketId && db.tickets[currentTicketId] && db.tickets[currentTicketId].status !== 'CLOSED') {
-    return db.tickets[currentTicketId];
-  }
-
-  let tid = genTicketId();
-  while (db.tickets[tid]) tid = genTicketId();
-
-  const ticket = {
-    id: tid,
-    customerId,
-    from,
-    msisdn: cleanMsisdn(from),
-    waMe: toWaMe(from),
-    status: 'OPEN', // OPEN | CLAIMED | CLOSED
-    createdAt: nowISO(),
-    updatedAt: nowISO(),
-    score: 0,
-    tag: '🔵 NORMAL',
-    lastBody: '',
-    locationUrl: '',
-    notes: [],
-    type: 'GENERAL', // GENERAL | TOWING | JADWAL | AC | NO_START
-    stage: 0,
-    followupCount: 0,
-    lastFollowupAtMs: 0,
-    lastInboundAtMs: nowMs(),
-    lastBotAtMs: 0,
-    lastRadarAtMs: 0,
-    lastAdminNotifyAtMs: 0,
-    priceStrike: 0,
-    lockMode: false,
-    arena: { lane: 'UNKNOWN', reason: '' },
-  };
-
-  db.tickets[tid] = ticket;
-  db.customers[customerId].activeTicketId = tid;
-  return ticket;
-}
-
-function updateTicket(ticket, patch = {}) {
-  Object.assign(ticket, patch);
-  ticket.updatedAt = nowISO();
-}
-
 // ---------------- LEAD SCORE ----------------
-function leadScore({ body, hasLocation, isTowingCmd, isJadwalCmd, cantDrive }) {
+function leadScore({ body }) {
   let score = 0;
-  if (cantDrive) score += 5;
-  if (hasLocation) score += 5;
-  if (isTowingCmd) score += 5;
+
+  if (detectCantDrive(body)) score += 5;
   if (detectPremium(body)) score += 3;
-  if (isJadwalCmd) score += 4;
-  if (detectPriceOnly(body) && String(body || '').length < 35) score -= 2;
-  score = Math.max(0, Math.min(10, score));
-  return score;
+  if (detectBuyingSignal(body)) score += 4;
+  if (detectPriceOnly(body) && body.length < 30) score -= 2;
+
+  return Math.max(0, Math.min(10, score));
 }
 
 function leadTag(score) {
