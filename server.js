@@ -982,6 +982,45 @@ function mainMenuText() {
   );
 }
 
+// ================= TICKET SYSTEM SAFE =================
+
+function getOrCreateTicket(db, customerId, from) {
+  if (!db.tickets) db.tickets = {};
+
+  // cari ticket aktif
+  let ticket = Object.values(db.tickets).find(
+    t => t.customerId === customerId && t.status !== "CLOSED"
+  );
+
+  if (ticket) return ticket;
+
+  // buat ticket baru
+  const id = "T-" + Math.floor(10000 + Math.random() * 90000);
+
+  ticket = {
+    id,
+    customerId,
+    from,
+    status: "OPEN",
+    type: "GENERAL",
+    stage: 0,
+    score: 0,
+    tag: "NORMAL",
+    createdAt: nowISO(),
+    updatedAt: nowISO(),
+    history: []
+  };
+
+  db.tickets[id] = ticket;
+
+  return ticket;
+}
+
+function updateTicket(ticket, patch) {
+  Object.assign(ticket, patch);
+  ticket.updatedAt = nowISO();
+}
+
 
 // ---------------- MAIN WEBHOOK ----------------
 
