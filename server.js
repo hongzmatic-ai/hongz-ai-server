@@ -136,6 +136,7 @@ const {
   TWILIO_AUTH_TOKEN,
   TWILIO_WHATSAPP_FROM,
   ADMIN_WHATSAPP_TO,
+  MONITOR_WHATSAPP_TO,
 
   // Optional
   TWILIO_WEBHOOK_URL = "",
@@ -163,10 +164,10 @@ const OPENAI_TEMPERATURE_FINAL    = Number(OPENAI_TEMPERATURE || 0.30);
 
 // ---------- ARENA CONTROL ----------
 const ARENA_CONTROL_ENABLED = process.env.ARENA_CONTROL_ENABLED || "true";
-const PRIORITY_ROUTING      = process.env.PRIORITY_ROUTING || "1,2,3,4"; // 1 URGENT | 2 BOOKING | 3 TECH | 4 PRICE
+const PRIORITY_ROUTING      = process.env.PRIORITY_ROUTING || "1,2,3,4";
 const ARENA_MAX_QUESTIONS   = process.env.ARENA_MAX_QUESTIONS || "2";
 
-// ---------- Towing style ----------
+// ---------- Towing ----------
 const TOWING_STYLE = process.env.TOWING_STYLE || "3";
 
 // ---------- Branding ----------
@@ -203,15 +204,12 @@ function extractLocation(reqBody) {
       mapsUrl: `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`
     };
   }
+
+
 // ---------------- STORAGE (FINAL - SAFE) ----------------
 function ensureDir(dir) {
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
 }
-
-// Kalau MONITOR_WHATSAPP_TO belum didefinisikan di ENV, amanin di sini:
-const MONITOR_WA_SAFE = (typeof MONITOR_WHATSAPP_TO !== "undefined" && MONITOR_WHATSAPP_TO)
-  ? MONITOR_WHATSAPP_TO
-  : "";
 
 // PAKAI DATA_DIR_FINAL (jangan declare DATA_DIR lagi biar gak bentrok)
 ensureDir(DATA_DIR_FINAL);
@@ -250,41 +248,43 @@ function nowISO() { return new Date().toISOString(); }
 function nowMs() { return Date.now(); }
 
 function sha16(s) {
-  return crypto.createHash('sha256').update(String(s)).digest('hex').slice(0, 16);
+  return crypto.createHash("sha256").update(String(s)).digest("hex").slice(0, 16);
 }
 
 function escapeXml(unsafe) {
-  return String(unsafe ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+  return String(unsafe ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 function replyTwiML(res, text) {
-  res.type('text/xml');
-  return res.status(200).send(`<Response><Message>${escapeXml(text)}</Message></Response>`);
+  res.type("text/xml");
+  return res.status(200).send(
+    `<Response><Message>${escapeXml(text)}</Message></Response>`
+  );
 }
 
-function normText(s) { return String(s || '').replace(/\u200b/g, '').trim(); }
+function normText(s) { return String(s || "").replace(/\u200b/g, "").trim(); }
 function upper(s) { return normText(s).toUpperCase(); }
 
 function isCommand(body, cmd) {
   const t = upper(body);
   const c = String(cmd).toUpperCase();
-  return t === c || t.startsWith(c + ' ') || t.includes('\n' + c) || t.includes(' ' + c + ' ');
+  return t === c || t.startsWith(c + " ") || t.includes("\n" + c) || t.includes(" " + c + " ");
 }
 
-function normalizeFrom(v) { return String(v || '').trim(); }
+function normalizeFrom(v) { return String(v || "").trim(); }
 
 // "whatsapp:+62813..." -> "62813..."
 function cleanMsisdn(from) {
-  return String(from || '').replace(/^whatsapp:\+?/i, '').replace(/[^\d]/g, '');
+  return String(from || "").replace(/^whatsapp:\+?/i, "").replace(/[^\d]/g, "");
 }
 function toWaMe(from) {
   const n = cleanMsisdn(from);
-  return n ? `https://wa.me/${n}` : '-';
+  return n ? `https://wa.me/${n}` : "-";
 }
 
 function isAdmin(from) {
@@ -294,17 +294,19 @@ function isAdmin(from) {
 }
 
 function isMonitor(from) {
-  const m = normalizeFrom(MONITOR_WA_SAFE).toLowerCase();
+  // MONITOR_WHATSAPP_TO boleh kosong; kalau kosong berarti fitur monitor nonaktif
+  const m = normalizeFrom(MONITOR_WHATSAPP_TO || "").toLowerCase();
   const f = normalizeFrom(from).toLowerCase();
   return !!(m && f && m === f);
 }
-  const body = String(reqBody?.Body || '').trim();
-  const m = body.match(/https?:\/\/(maps\.app\.goo\.gl|www\.google\.com\/maps|goo\.gl\/maps)[^\s]+/i);
-  if (m) return { type: 'link', mapsUrl: m[0], raw: body };
 
+// Ekstrak link Google Maps dari pesan Twilio (kalau ada)
+function extractMapsLink(reqBody) {
+  const body = String(reqBody?.Body || "").trim();
+  const m = body.match(/https?:\/\/(maps\.app\.goo\.gl|www\.google\.com\/maps|goo\.gl\/maps)[^\s]+/i);
+  if (m) return { type: "link", mapsUrl: m[0], raw: body };
   return null;
 }
-
 // ---------------- SIGNATURES ----------------
 function confidenceLine(style = 'neutral') {
   if (style === 'casual') return '✅ Tenang ya, kita bantu sampai jelas langkahnya 🙂';
