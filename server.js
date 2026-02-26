@@ -317,7 +317,7 @@ function isMonitor(from) {
   return !!(m && f && m === f);
 }
 
-} ---------------- SIGNATURES ----------------
+---------------- SIGNATURES ----------------
 function confidenceLine(style = 'neutral') {
   if (style === 'casual') return '✅ Tenang ya, kita bantu sampai jelas langkahnya 🙂';
   return '✅ Tenang ya, kami bantu sampai jelas langkahnya.';
