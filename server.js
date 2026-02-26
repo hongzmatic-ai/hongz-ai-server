@@ -1021,6 +1021,36 @@ function updateTicket(ticket, patch) {
   ticket.updatedAt = nowISO();
 }
 
+// ================= SAFE DETECTORS =================
+
+function askedForSchedule(text) {
+  const t = String(text || "").toLowerCase();
+  return /jadwal|booking|antri|datang jam|bisa hari|bisa besok|hari ini buka/i.test(t);
+}
+
+function detectPriceOnly(text) {
+  const t = String(text || "").toLowerCase();
+  return /berapa biaya|berapa harga|kisaran harga|ongkos/i.test(t);
+}
+
+function detectBuyingSignal(text) {
+  const t = String(text || "").toLowerCase();
+  return /mau datang|jadi datang|fix datang|oke saya ke sana/i.test(t);
+}
+
+function detectCantDrive(text) {
+  const t = String(text || "").toLowerCase();
+  return /tidak bisa jalan|gak bisa jalan|mogok|stuck/i.test(t);
+}
+
+function detectAC(text) {
+  return /ac/i.test(text);
+}
+
+function detectNoStart(text) {
+  const t = String(text || "").toLowerCase();
+  return /tidak bisa start|gak bisa start|starter mati/i.test(t);
+}
 
 // ---------------- MAIN WEBHOOK ----------------
 
