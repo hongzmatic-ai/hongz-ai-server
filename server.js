@@ -198,12 +198,32 @@ function extractLocation(reqBody) {
 
   if (lat && lng) {
     return {
-      type: 'coords',
+      type: "coords",
       lat: String(lat),
       lng: String(lng),
       mapsUrl: `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`
     };
   }
+
+  // kalau user kirim link maps, tangkap juga
+  const link = extractMapsLink(reqBody);
+  if (link) return link;
+
+  return null;
+}
+
+// Ekstrak link Google Maps dari pesan Twilio (kalau ada)
+function extractMapsLink(reqBody) {
+  const body = String(reqBody?.Body ?? "").trim();
+  if (!body) return null;
+
+  const m = body.match(
+    /(https?:\/\/(?:maps\.app\.goo\.gl|www\.google\.com\/maps|goo\.gl\/maps)[^\s]+)/i
+  );
+  if (!m) return null;
+
+  return { type: "link", mapsUrl: m[1], raw: body };
+}
 
 
 // ---------------- STORAGE (FINAL - SAFE) ----------------
