@@ -317,7 +317,7 @@ function isMonitor(from) {
   return !!(m && f && m === f);
 }
 
----------------- SIGNATURES ----------------
+// ---------------- SIGNATURES ----------------
 function confidenceLine(style = 'neutral') {
   if (style === 'casual') return '✅ Tenang ya, kita bantu sampai jelas langkahnya 🙂';
   return '✅ Tenang ya, kami bantu sampai jelas langkahnya.';
@@ -331,6 +331,30 @@ function signatureShort() {
     `📲 Admin: ${WHATSAPP_ADMIN}`,
     `💬 CS: ${WHATSAPP_CS}`,
     `Ketik *JADWAL* (booking) / *TOWING* (darurat)`,
+  ].join('\n');
+}
+
+function signatureTowing(style = '3') {
+  const s = String(style || '3');
+  if (s === '2') {
+    return [
+      `— ${BIZ_NAME}`,
+      `📲 Admin cepat: ${WHATSAPP_ADMIN}`,
+      `Ketik *TOWING* + kirim *share lokasi*`,
+    ].join('\n');
+  }
+  if (s === '1') {
+    return [
+      `— ${BIZ_NAME}`,
+      `⏱ ${BIZ_HOURS}`,
+      `📲 Admin: ${WHATSAPP_ADMIN}`,
+      `Jika perlu cepat: klik Admin lalu bisa *telepon/voice call*.`,
+    ].join('\n');
+  }
+  return [
+    `— ${BIZ_NAME} (Precision Transmission Center)`,
+    `📲 Admin prioritas: ${WHATSAPP_ADMIN}`,
+    `⚡ Darurat? Klik Admin untuk *voice call* (lebih cepat koordinasi).`,
   ].join('\n');
 }
 
