@@ -327,7 +327,205 @@ function extractMapsLink(reqBody) {
   if (m) return { type: "link", mapsUrl: m[0], raw: body };
   return null;
 }
-// ---------------- SIGNATURES ----------------
+//// ---------------- ENV (SAFE) ----------------
+const {
+  // Twilio
+  TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN,
+  TWILIO_WHATSAPP_FROM,
+  ADMIN_WHATSAPP_TO,
+  MONITOR_WHATSAPP_TO,
+
+  // Optional
+  TWILIO_WEBHOOK_URL = "",
+
+  // OpenAI
+  OPENAI_API_KEY,
+  OPENAI_MODEL_PRIMARY,
+  OPENAI_MODEL_FALLBACK,
+  OPENAI_TIMEOUT_MS,
+  OPENAI_MAX_OUTPUT_TOKENS,
+  OPENAI_TEMPERATURE,
+
+  // Storage / cron / debug
+  DATA_DIR,
+  CRON_KEY,
+  DEBUG,
+} = process.env;
+
+// ---------- OpenAI defaults ----------
+const OPENAI_MODEL_PRIMARY_FINAL  = OPENAI_MODEL_PRIMARY  || "gpt-4o";
+const OPENAI_MODEL_FALLBACK_FINAL = OPENAI_MODEL_FALLBACK || "gpt-4o-mini";
+const OPENAI_TIMEOUT_MS_FINAL     = Number(OPENAI_TIMEOUT_MS || 9000);
+const OPENAI_MAXTOKENS_FINAL      = Number(OPENAI_MAX_OUTPUT_TOKENS || 260);
+const OPENAI_TEMPERATURE_FINAL    = Number(OPENAI_TEMPERATURE || 0.30);
+
+// ---------- ARENA CONTROL ----------
+const ARENA_CONTROL_ENABLED = process.env.ARENA_CONTROL_ENABLED || "true";
+const PRIORITY_ROUTING      = process.env.PRIORITY_ROUTING || "1,2,3,4";
+const ARENA_MAX_QUESTIONS   = process.env.ARENA_MAX_QUESTIONS || "2";
+
+// ---------- Towing ----------
+const TOWING_STYLE = process.env.TOWING_STYLE || "3";
+
+// ---------- Branding ----------
+const BIZ_NAME       = process.env.BIZ_NAME || "Hongz Bengkel – Spesialis Transmisi Matic";
+const BIZ_ADDRESS    = process.env.BIZ_ADDRESS || "Jl. M. Yakub No.10b, Medan Perjuangan";
+const BIZ_HOURS      = process.env.BIZ_HOURS || "Senin–Sabtu 09.00–17.00";
+const MAPS_LINK      = process.env.MAPS_LINK || "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9";
+const WHATSAPP_ADMIN = process.env.WHATSAPP_ADMIN || "https://wa.me/6281375430728";
+const WHATSAPP_CS    = process.env.WHATSAPP_CS || "https://wa.me/6285752965167";
+
+// ---------- Storage default ----------
+const DATA_DIR_FINAL = DATA_DIR || "./data";
+
+// ---------- Debug ----------
+const IS_DEBUG = String(DEBUG || "false").toLowerCase() === "true";
+
+// ---------------- APP ----------------
+const app = express();
+app.use(bodyParser.urlencoded({ extended: false })); // Twilio form-urlencoded
+app.use(bodyParser.json());
+
+
+
+// ---------------- LOCATION PARSER ----------------
+function extractLocation(reqBody) {
+  const lat = reqBody?.Latitude || reqBody?.latitude;
+  const lng = reqBody?.Longitude || reqBody?.longitude;
+
+  if (lat && lng) {
+    return {
+      type: "coords",
+      lat: String(lat),
+      lng: String(lng),
+      mapsUrl: `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`
+    };
+  }
+
+  // kalau user kirim link maps, tangkap juga
+  const link = extractMapsLink(reqBody);
+  if (link) return link;
+
+  return null;
+}
+
+// Ekstrak link Google Maps dari pesan Twilio (kalau ada)
+function extractMapsLink(reqBody) {
+  const body = String(reqBody?.Body ?? "").trim();
+  if (!body) return null;
+
+  const m = body.match(
+    /(https?:\/\/(?:maps\.app\.goo\.gl|www\.google\.com\/maps|goo\.gl\/maps)[^\s]+)/i
+  );
+  if (!m) return null;
+
+  return { type: "link", mapsUrl: m[1], raw: body };
+}
+
+
+// ---------------- STORAGE (FINAL - SAFE) ----------------
+function ensureDir(dir) {
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+}
+
+// PAKAI DATA_DIR_FINAL (jangan declare DATA_DIR lagi biar gak bentrok)
+ensureDir(DATA_DIR_FINAL);
+
+const DB_FILE = path.join(DATA_DIR_FINAL, "hongz_enterprise_db.json");
+
+function loadDBFile() {
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  } catch (_) {
+    return { customers: {}, tickets: {}, events: [] };
+  }
+}
+
+function saveDBFile(db) {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf8");
+  } catch (e) {
+    console.error("DB save failed:", e.message);
+  }
+}
+
+// Firestore hybrid (airbag)
+async function loadDB() {
+  if (!fsdb) return loadDBFile();
+  const snap = await fsdb.collection("app").doc("db").get();
+  return snap.exists ? snap.data() : { customers: {}, tickets: {}, events: [] };
+}
+
+async function saveDB(db) {
+  if (!fsdb) return saveDBFile(db);
+  await fsdb.collection("app").doc("db").set(db, { merge: true });
+}
+
+function nowISO() { return new Date().toISOString(); }
+function nowMs() { return Date.now(); }
+
+function sha16(s) {
+  return crypto.createHash("sha256").update(String(s)).digest("hex").slice(0, 16);
+}
+
+function escapeXml(unsafe) {
+  return String(unsafe ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function replyTwiML(res, text) {
+  res.type("text/xml");
+  return res.status(200).send(
+    `<Response><Message>${escapeXml(text)}</Message></Response>`
+  );
+}
+
+function normText(s) { return String(s || "").replace(/\u200b/g, "").trim(); }
+function upper(s) { return normText(s).toUpperCase(); }
+
+function isCommand(body, cmd) {
+  const t = upper(body);
+  const c = String(cmd).toUpperCase();
+  return t === c || t.startsWith(c + " ") || t.includes("\n" + c) || t.includes(" " + c + " ");
+}
+
+function normalizeFrom(v) { return String(v || "").trim(); }
+
+// "whatsapp:+62813..." -> "62813..."
+function cleanMsisdn(from) {
+  return String(from || "").replace(/^whatsapp:\+?/i, "").replace(/[^\d]/g, "");
+}
+function toWaMe(from) {
+  const n = cleanMsisdn(from);
+  return n ? `https://wa.me/${n}` : "-";
+}
+
+function isAdmin(from) {
+  const a = normalizeFrom(ADMIN_WHATSAPP_TO).toLowerCase();
+  const f = normalizeFrom(from).toLowerCase();
+  return a && f && a === f;
+}
+
+function isMonitor(from) {
+  // MONITOR_WHATSAPP_TO boleh kosong; kalau kosong berarti fitur monitor nonaktif
+  const m = normalizeFrom(MONITOR_WHATSAPP_TO || "").toLowerCase();
+  const f = normalizeFrom(from).toLowerCase();
+  return !!(m && f && m === f);
+}
+
+// Ekstrak link Google Maps dari pesan Twilio (kalau ada)
+function extractMapsLink(reqBody) {
+  const body = String(reqBody?.Body || "").trim();
+  const m = body.match(/https?:\/\/(maps\.app\.goo\.gl|www\.google\.com\/maps|goo\.gl\/maps)[^\s]+/i);
+  if (m) return { type: "link", mapsUrl: m[0], raw: body };
+  return null;
+
+} ---------------- SIGNATURES ----------------
 function confidenceLine(style = 'neutral') {
   if (style === 'casual') return '✅ Tenang ya, kita bantu sampai jelas langkahnya 🙂';
   return '✅ Tenang ya, kami bantu sampai jelas langkahnya.';
