@@ -148,13 +148,13 @@ const {
   OPENAI_MAX_OUTPUT_TOKENS,
   OPENAI_TEMPERATURE,
 
-  // Storage / cron / debug (kalau memang dipakai di file)
+  // Storage / cron / debug
   DATA_DIR,
   CRON_KEY,
   DEBUG,
 } = process.env;
 
-// ---------- OpenAI defaults (di bawah, BUKAN di destructure) ----------
+// ---------- OpenAI defaults ----------
 const OPENAI_MODEL_PRIMARY_FINAL  = OPENAI_MODEL_PRIMARY  || "gpt-4o";
 const OPENAI_MODEL_FALLBACK_FINAL = OPENAI_MODEL_FALLBACK || "gpt-4o-mini";
 const OPENAI_TIMEOUT_MS_FINAL     = Number(OPENAI_TIMEOUT_MS || 9000);
@@ -166,23 +166,22 @@ const ARENA_CONTROL_ENABLED = process.env.ARENA_CONTROL_ENABLED || "true";
 const PRIORITY_ROUTING      = process.env.PRIORITY_ROUTING || "1,2,3,4"; // 1 URGENT | 2 BOOKING | 3 TECH | 4 PRICE
 const ARENA_MAX_QUESTIONS   = process.env.ARENA_MAX_QUESTIONS || "2";
 
-// ---------- Towing style: 1 ideal | 2 super singkat | 3 premium ----------
+// ---------- Towing style ----------
 const TOWING_STYLE = process.env.TOWING_STYLE || "3";
 
 // ---------- Branding ----------
-const BIZ_NAME     = process.env.BIZ_NAME || "Hongz Bengkel – Spesialis Transmisi Matic";
-const BIZ_ADDRESS  = process.env.BIZ_ADDRESS || "Jl. M. Yakub No.10b, Medan Perjuangan";
-const BIZ_HOURS    = process.env.BIZ_HOURS || "Senin–Sabtu 09.00–17.00";
-const MAPS_LINK    = process.env.MAPS_LINK || "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9";
+const BIZ_NAME       = process.env.BIZ_NAME || "Hongz Bengkel – Spesialis Transmisi Matic";
+const BIZ_ADDRESS    = process.env.BIZ_ADDRESS || "Jl. M. Yakub No.10b, Medan Perjuangan";
+const BIZ_HOURS      = process.env.BIZ_HOURS || "Senin–Sabtu 09.00–17.00";
+const MAPS_LINK      = process.env.MAPS_LINK || "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9";
 const WHATSAPP_ADMIN = process.env.WHATSAPP_ADMIN || "https://wa.me/6281375430728";
 const WHATSAPP_CS    = process.env.WHATSAPP_CS || "https://wa.me/6285752965167";
 
-// ---------- Storage default (kalau kamu pakai bagian DB file ./data) ----------
+// ---------- Storage default ----------
 const DATA_DIR_FINAL = DATA_DIR || "./data";
 
-// ---------- Debug boolean helper ----------
+// ---------- Debug ----------
 const IS_DEBUG = String(DEBUG || "false").toLowerCase() === "true";
-
 
 // ---------------- APP ----------------
 const app = express();
