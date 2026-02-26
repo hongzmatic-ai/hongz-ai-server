@@ -188,15 +188,35 @@ const app = express();
 app.use(bodyParser.urlencoded({ extended: false })); // Twilio form-urlencoded
 app.use(bodyParser.json());
 
-// ---------------- STORAGE ----------------
+
+
+// ---------------- LOCATION PARSER ----------------
+function extractLocation(reqBody) {
+  const lat = reqBody?.Latitude || reqBody?.latitude;
+  const lng = reqBody?.Longitude || reqBody?.longitude;
+
+  if (lat && lng) {
+    return {
+      type: 'coords',
+      lat: String(lat),
+      lng: String(lng),
+      mapsUrl: `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`
+    };
+  }
+// ---------------- STORAGE (FINAL - SAFE) ----------------
 function ensureDir(dir) {
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
 }
 
-const DATA_DIR = process.env.DATA_DIR || "./data";
-ensureDir(DATA_DIR);
+// Kalau MONITOR_WHATSAPP_TO belum didefinisikan di ENV, amanin di sini:
+const MONITOR_WA_SAFE = (typeof MONITOR_WHATSAPP_TO !== "undefined" && MONITOR_WHATSAPP_TO)
+  ? MONITOR_WHATSAPP_TO
+  : "";
 
-const DB_FILE = path.join(DATA_DIR, "hongz_enterprise_db.json");
+// PAKAI DATA_DIR_FINAL (jangan declare DATA_DIR lagi biar gak bentrok)
+ensureDir(DATA_DIR_FINAL);
+
+const DB_FILE = path.join(DATA_DIR_FINAL, "hongz_enterprise_db.json");
 
 function loadDBFile() {
   try {
@@ -225,6 +245,7 @@ async function saveDB(db) {
   if (!fsdb) return saveDBFile(db);
   await fsdb.collection("app").doc("db").set(db, { merge: true });
 }
+
 function nowISO() { return new Date().toISOString(); }
 function nowMs() { return Date.now(); }
 
@@ -271,26 +292,12 @@ function isAdmin(from) {
   const f = normalizeFrom(from).toLowerCase();
   return a && f && a === f;
 }
+
 function isMonitor(from) {
-  const m = normalizeFrom(MONITOR_WHATSAPP_TO).toLowerCase();
+  const m = normalizeFrom(MONITOR_WA_SAFE).toLowerCase();
   const f = normalizeFrom(from).toLowerCase();
   return !!(m && f && m === f);
 }
-
-// ---------------- LOCATION PARSER ----------------
-function extractLocation(reqBody) {
-  const lat = reqBody?.Latitude || reqBody?.latitude;
-  const lng = reqBody?.Longitude || reqBody?.longitude;
-
-  if (lat && lng) {
-    return {
-      type: 'coords',
-      lat: String(lat),
-      lng: String(lng),
-      mapsUrl: `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`
-    };
-  }
-
   const body = String(reqBody?.Body || '').trim();
   const m = body.match(/https?:\/\/(maps\.app\.goo\.gl|www\.google\.com\/maps|goo\.gl\/maps)[^\s]+/i);
   if (m) return { type: 'link', mapsUrl: m[0], raw: body };
