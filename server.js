@@ -79,6 +79,26 @@ const {
   DEBUG,
 } = process.env;
 
+// ===== SAFE ENV DEFAULTS (WAJIB BIAR GAK CRASH) =====
+const ADMIN_NOTIFY_KEYWORDS = process.env.ADMIN_NOTIFY_KEYWORDS || "";
+const ADMIN_NOTIFY_ENABLED = process.env.ADMIN_NOTIFY_ENABLED || "false";
+const ADMIN_NOTIFY_MIN_SCORE = process.env.ADMIN_NOTIFY_MIN_SCORE || "5";
+const ADMIN_NOTIFY_COOLDOWN_SEC = process.env.ADMIN_NOTIFY_COOLDOWN_SEC || "60";
+
+const MONITOR_LEVEL = process.env.MONITOR_LEVEL || "ALL";
+const MONITOR_COOLDOWN_SEC = process.env.MONITOR_COOLDOWN_SEC || "20";
+
+const FOLLOWUP_ENABLED = process.env.FOLLOWUP_ENABLED || "false";
+const FOLLOWUP_MAX_PER_CUSTOMER = process.env.FOLLOWUP_MAX_PER_CUSTOMER || "2";
+const FOLLOWUP_COOLDOWN_HOURS = process.env.FOLLOWUP_COOLDOWN_HOURS || "24";
+const FOLLOWUP_STAGE1_HOURS = process.env.FOLLOWUP_STAGE1_HOURS || "18";
+const FOLLOWUP_STAGE2_HOURS = process.env.FOLLOWUP_STAGE2_HOURS || "48";
+
+const ANTI_JEBEH_ENABLED = process.env.ANTI_JEBEH_ENABLED || "true";
+const ANTI_JEBEH_STRICT = process.env.ANTI_JEBEH_STRICT || "true";
+const ANTI_JEBEH_MIN_INFO_REQUIRED = process.env.ANTI_JEBEH_MIN_INFO_REQUIRED || "true";
+const ANTI_JEBEH_STRIKES_LOCK = process.env.ANTI_JEBEH_STRIKES_LOCK || "2";
+
 // ---------- OpenAI defaults ----------
 const OPENAI_MODEL_PRIMARY_FINAL  = OPENAI_MODEL_PRIMARY  || "gpt-4o";
 const OPENAI_MODEL_FALLBACK_FINAL = OPENAI_MODEL_FALLBACK || "gpt-4o-mini";
