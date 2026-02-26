@@ -1218,10 +1218,13 @@ async function webhookHandler(req, res) {
   // ✅ Update memory
   updateProfileFromText(db, customerId, body);
 
-// ===== QUICK BOOKING HANDLER =====
-if (["a", "1"].includes(textLower.trim())) {
+// ===== QUICK BOOKING HANDLER (robust) =====
+const quick = textLower.trim();
+
+if (/^(a|1)\b/.test(quick)) {   // a, a bang, 1, 1 bang, 1.
   updateTicket(ticket, { type: "JADWAL", stage: 3 });
   await saveDB(db);
+
   return replyTwiML(
     res,
     "Siap Bang ✅\n\nSilakan kirim:\n1) Hari & jam datang\n2) Nomor plat\n\nAdmin akan siapkan slot untuk Anda."
