@@ -129,17 +129,16 @@ Fokus solusi, jelas, dan jangan ulang pertanyaan yang sudah dijawab.
 }
 
 
-// ---------------- ENV ----------------
-const PORT = process.env.PORT || 10000;
-
+// ---------------- ENV (SAFE) ----------------
 const {
+  // Twilio
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
   TWILIO_WHATSAPP_FROM,
   ADMIN_WHATSAPP_TO,
 
   // Optional
-  TWILIO_WEBHOOK_URL = '',
+  TWILIO_WEBHOOK_URL = "",
 
   // OpenAI
   OPENAI_API_KEY,
@@ -148,59 +147,42 @@ const {
   OPENAI_TIMEOUT_MS,
   OPENAI_MAX_OUTPUT_TOKENS,
   OPENAI_TEMPERATURE,
+
+  // Storage / cron / debug (kalau memang dipakai di file)
+  DATA_DIR,
+  CRON_KEY,
+  DEBUG,
 } = process.env;
 
-// Default values (dipasang di bawah, BUKAN di dalam destructure)
-const OPENAI_MODEL_PRIMARY_FINAL  = OPENAI_MODEL_PRIMARY  || 'gpt-4o';
-const OPENAI_MODEL_FALLBACK_FINAL = OPENAI_MODEL_FALLBACK || 'gpt-4o-mini';
+// ---------- OpenAI defaults (di bawah, BUKAN di destructure) ----------
+const OPENAI_MODEL_PRIMARY_FINAL  = OPENAI_MODEL_PRIMARY  || "gpt-4o";
+const OPENAI_MODEL_FALLBACK_FINAL = OPENAI_MODEL_FALLBACK || "gpt-4o-mini";
 const OPENAI_TIMEOUT_MS_FINAL     = Number(OPENAI_TIMEOUT_MS || 9000);
 const OPENAI_MAXTOKENS_FINAL      = Number(OPENAI_MAX_OUTPUT_TOKENS || 260);
 const OPENAI_TEMPERATURE_FINAL    = Number(OPENAI_TEMPERATURE || 0.30);
 
-  // ARENA CONTROL
-  ARENA_CONTROL_ENABLED = 'true',
-  PRIORITY_ROUTING = '1,2,3,4',       // 1 URGENT | 2 BOOKING | 3 TECH | 4 PRICE
-  ARENA_MAX_QUESTIONS = '2',
+// ---------- ARENA CONTROL ----------
+const ARENA_CONTROL_ENABLED = process.env.ARENA_CONTROL_ENABLED || "true";
+const PRIORITY_ROUTING      = process.env.PRIORITY_ROUTING || "1,2,3,4"; // 1 URGENT | 2 BOOKING | 3 TECH | 4 PRICE
+const ARENA_MAX_QUESTIONS   = process.env.ARENA_MAX_QUESTIONS || "2";
 
-  // towing style: 1 ideal | 2 super singkat | 3 premium
-  TOWING_STYLE = '3',
+// ---------- Towing style: 1 ideal | 2 super singkat | 3 premium ----------
+const TOWING_STYLE = process.env.TOWING_STYLE || "3";
 
-  // Branding
-  BIZ_NAME = 'Hongz Bengkel – Spesialis Transmisi Matic',
-  BIZ_ADDRESS = 'Jl. M. Yakub No.10b, Medan Perjuangan',
-  BIZ_HOURS = 'Senin–Sabtu 09.00–17.00',
-  MAPS_LINK = 'https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9',
-  WHATSAPP_ADMIN = 'https://wa.me/6281375430728',
-  WHATSAPP_CS = 'https://wa.me/6285752965167',
+// ---------- Branding ----------
+const BIZ_NAME     = process.env.BIZ_NAME || "Hongz Bengkel – Spesialis Transmisi Matic";
+const BIZ_ADDRESS  = process.env.BIZ_ADDRESS || "Jl. M. Yakub No.10b, Medan Perjuangan";
+const BIZ_HOURS    = process.env.BIZ_HOURS || "Senin–Sabtu 09.00–17.00";
+const MAPS_LINK    = process.env.MAPS_LINK || "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9";
+const WHATSAPP_ADMIN = process.env.WHATSAPP_ADMIN || "https://wa.me/6281375430728";
+const WHATSAPP_CS    = process.env.WHATSAPP_CS || "https://wa.me/6285752965167";
 
-  // Follow-up
-  FOLLOWUP_ENABLED = 'true',
-  FOLLOWUP_STAGE1_HOURS = '18',
-  FOLLOWUP_STAGE2_HOURS = '48',
-  FOLLOWUP_COOLDOWN_HOURS = '24',
-  FOLLOWUP_MAX_PER_CUSTOMER = '2',
+// ---------- Storage default (kalau kamu pakai bagian DB file ./data) ----------
+const DATA_DIR_FINAL = DATA_DIR || "./data";
 
-  // Storage / cron / debug
-  
-  CRON_KEY = '',
-  DEBUG = 'false',
-} = process.env;
+// ---------- Debug boolean helper ----------
+const IS_DEBUG = String(DEBUG || "false").toLowerCase() === "true";
 
-const IS_DEBUG = String(DEBUG).toLowerCase() === 'true';
-const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-
-function dlog(...args) {
-  if (IS_DEBUG) console.log('[HONGZ]', ...args);
-}
-
-function envBool(v, def = false) {
-  if (v === undefined || v === null || v === '') return def;
-  return String(v).toLowerCase() === 'true';
-}
-
-if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !ADMIN_WHATSAPP_TO) {
-  console.error('❌ Missing ENV: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, ADMIN_WHATSAPP_TO');
-}
 
 // ---------------- APP ----------------
 const app = express();
