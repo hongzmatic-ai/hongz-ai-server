@@ -977,14 +977,64 @@ function envBool(v, def = false) {
   return String(v).toLowerCase() === "true";
 }
 
-// Pastikan twilioClient ada (kalau belum dideclare di atas file)
+// WAJIB ADA: parsePriorityRouting (biar HEALTH tidak error)
+function parsePriorityRouting(csv) {
+  if (!csv) return ["1", "2", "3", "4"];
+  return String(csv)
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => ["1", "2", "3", "4"].includes(s));
+}
+
+// Pastikan twilioClient ada
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
 // Pastikan PORT ada
 const PORT = Number(process.env.PORT || 3000);
 
+// Helper TwiML satu versi saja (hindari replyTwiml vs replyTwiML)
+function replyTwiML(res, message) {
+  const twiml = new twilio.twiml.MessagingResponse();
+  twiml.message(message || "Halo! Ada yang bisa kami bantu?");
+  res.type("text/xml");
+  return res.status(200).send(twiml.toString());
+}
+
+// Wrapper leadScore aman (kompatibel dengan leadScore lama yang butuh object lengkap)
+function computeLeadScoreSafe({ body, hasLoc, cmdTowing, cmdJadwal, cantDrive }) {
+  try {
+    // kalau leadScore versi lengkap tersedia
+    return leadScore({
+      body,
+      hasLocation: !!hasLoc,
+      isTowingCmd: !!cmdTowing,
+      isJadwalCmd: !!cmdJadwal,
+      cantDrive: !!cantDrive,
+    });
+  } catch (_) {
+    // fallback sederhana biar tidak crash
+    let s = 0;
+    if (cantDrive) s += 5;
+    if (hasLoc) s += 5;
+    if (cmdTowing) s += 4;
+    if (cmdJadwal) s += 3;
+    if (detectPremium && detectPremium(body)) s += 2;
+    if (detectPriceOnly && detectPriceOnly(body) && String(body || "").length < 35) s -= 2;
+    return Math.max(0, Math.min(10, s));
+  }
+}
+
+// Wrapper arenaClassify aman (kompatibel dengan versi lengkap)
+function classifyArenaSafe(payload) {
+  try {
+    return arenaClassify(payload); // versi lengkap
+  } catch (_) {
+    // fallback minimal
+    return { lane: "GENERAL", reason: "FALLBACK" };
+  }
+}
+
 async function webhookHandler(req, res) {
-  // ✅ FIX: loadDB harus await
   const db = await loadDB();
   if (!db.customers) db.customers = {};
   if (!db.tickets) db.tickets = {};
@@ -993,35 +1043,32 @@ async function webhookHandler(req, res) {
   const from = normalizeFrom(req.body?.From || "");
   const to = normalizeFrom(req.body?.To || "");
   const body = normText(req.body?.Body || "");
-  const customerText = body;
 
   // ===== SECURITY LAYER =====
-  if (customerText.length > 800) {
+  if (body.length > 800) {
     return replyTwiML(res, "Pesan terlalu panjang Bang 🙏 Mohon kirim ringkas ya.");
   }
 
-  const safeText = customerText.replace(/[<>`]/g, "");
+  const safeText = String(body || "").replace(/[<>`]/g, "");
   if (!safeText.trim()) {
     return replyTwiML(res, "Silakan tulis keluhan mobilnya ya Bang.");
   }
 
   const textLower = safeText.trim().toLowerCase();
+  const style = detectStyle(body);
+  const location = extractLocation(req.body || {});
+  const hasLoc = !!location;
+
+  dlog("IN", { from, to, body, hasLocation: hasLoc });
 
   // ===== MENU ABCD =====
   const abcd = routeABCD(textLower);
-  if (abcd) {
-    return replyTwiML(res, abcd);
-  }
+  if (abcd) return replyTwiML(res, abcd);
 
   // ===== KEYWORD MENU =====
   if (["menu", "start", "halo", "hai", "help", "mulai"].includes(textLower)) {
     return replyTwiML(res, mainMenuText());
   }
-
-  const location = extractLocation(req.body || {});
-  const style = detectStyle(body);
-
-  dlog("IN", { from, to, body, hasLocation: !!location });
 
   // ---- ADMIN ----
   if (isAdmin(from)) {
@@ -1076,14 +1123,15 @@ async function webhookHandler(req, res) {
     return replyTwiML(res, "Siap. Follow-up diaktifkan kembali. Silakan tulis keluhan Anda.");
   }
 
-  // ✅ Ticket harus dibuat SEBELUM routing yang butuh ticket.type
+  // ✅ Ticket dibuat dulu
   const ticket = getOrCreateTicket(db, customerId, from);
 
-  // ✅ Update memory dari teks pelanggan
+  // ✅ Update memory
   updateProfileFromText(db, customerId, body);
 
-  // 1) ROUTING cepat (tanpa GPT) — dilakukan setelah ticket ada
-  const routed = routeCustomerText(customerText, ticket?.type || "GENERAL");
+  // ---- ROUTING cepat (tanpa GPT) ----
+  // hanya jalan setelah ticket ada
+  const routed = routeCustomerText(body, ticket?.type || "GENERAL");
   if (routed) {
     ticket.lastBotAtMs = nowMs();
     await saveDB(db);
@@ -1095,41 +1143,57 @@ async function webhookHandler(req, res) {
   const cmdJadwal = isCommand(body, "JADWAL");
 
   // ---- Detections ----
+  // PENTING: detectAC jangan dobel definisi di file.
   const acMode = detectAC(body);
   const noStart = detectNoStart(body);
   const cantDrive = detectCantDrive(body);
-  const hasLoc = !!location;
   const priceOnly = detectPriceOnly(body);
   const buyingSignal = detectBuyingSignal(body);
   const scheduleAsk = askedForSchedule(body);
 
   const vInfo = hasVehicleInfo(body);
   const sInfo = hasSymptomInfo(body);
+  const suspicious = priceOnly && String(body || "").length < 35;
 
   // ---- Sticky type ----
-  if (detectAC(textLower)) updateTicket(ticket, { type: "AC" });
-  if (/jadwal|booking|antri|jam berapa/.test(textLower)) updateTicket(ticket, { type: "JADWAL" });
-  if (/towing|derek|mogok|gak bisa jalan|stuck/.test(textLower)) updateTicket(ticket, { type: "TOWING" });
+  if (acMode) updateTicket(ticket, { type: "AC" });
+  if (/jadwal|booking|antri|jam berapa/i.test(body)) updateTicket(ticket, { type: "JADWAL" });
+  if (/towing|derek|mogok|gak bisa jalan|ga bisa jalan|stuck/i.test(body)) updateTicket(ticket, { type: "TOWING" });
 
   // ---- Lead score/tag ----
-  const score = leadScore({ body });
+  const score = computeLeadScoreSafe({ body, hasLoc, cmdTowing, cmdJadwal, cantDrive });
   const tag = leadTag(score);
 
   // ---- Stage ----
   let stage = Number(ticket.stage || 0);
   if (cmdJadwal || scheduleAsk || buyingSignal) stage = Math.max(stage, 2);
   else if (vInfo || sInfo || acMode || noStart) stage = Math.max(stage, 1);
+  if ((vInfo && sInfo) || cmdJadwal) stage = Math.max(stage, 2);
 
-  // ---- Type ----
+  // ---- Type (final decision) ----
   let type = "GENERAL";
   if (cmdJadwal) type = "JADWAL";
   else if (acMode) type = "AC";
   else if (noStart) type = "NO_START";
   else if (cmdTowing || cantDrive || hasLoc) type = "TOWING";
 
-  // ---- Arena ---- (pakai versi arenaClassify yang sederhana)
+  // ---- Arena ----
   const arenaOn = envBool(ARENA_CONTROL_ENABLED, true);
-  const arena = arenaOn ? arenaClassify({ body }) : { lane: "OFF", reason: "DISABLED" };
+  const arena = arenaOn
+    ? classifyArenaSafe({
+        body,
+        hasLoc,
+        cantDrive,
+        cmdTowing,
+        cmdJadwal,
+        buyingSignal,
+        scheduleAsk,
+        priceOnly,
+        vInfo,
+        sInfo,
+        suspicious,
+      })
+    : { lane: "OFF", reason: "DISABLED" };
 
   if (location?.mapsUrl) ticket.locationUrl = location.mapsUrl;
 
@@ -1161,6 +1225,7 @@ async function webhookHandler(req, res) {
   if (db.events.length > 5000) db.events = db.events.slice(-2000);
 
   // ---- RULES PRIORITY ----
+
   // RULE: maps
   if (/alamat|lokasi|maps|map|di mana|dimana/i.test(body)) {
     await saveDB(db);
@@ -1262,8 +1327,9 @@ app.get("/cron/followup", async (req, res) => {
   try {
     const key = String(req.query.key || "");
     if (!CRON_KEY || key !== CRON_KEY) return res.status(403).send("Forbidden");
-    if (String(process.env.FOLLOWUP_ENABLED || "false").toLowerCase() !== "true")
+    if (String(process.env.FOLLOWUP_ENABLED || "false").toLowerCase() !== "true") {
       return res.status(200).send("Follow-up disabled");
+    }
 
     const db = await loadDB();
     const tickets = Object.values(db.tickets || {});
@@ -1277,6 +1343,7 @@ app.get("/cron/followup", async (req, res) => {
 
       if (isDueForFollowup(t)) {
         const msg = followupFallback(t);
+
         await twilioClient.messages.create({
           from: TWILIO_WHATSAPP_FROM,
           to: t.from,
@@ -1301,7 +1368,7 @@ app.get("/cron/followup", async (req, res) => {
 // HEALTH
 app.get("/", (_req, res) => {
   try {
-    const arenaOn = String(ARENA_CONTROL_ENABLED).toLowerCase() === "true";
+    const arenaOn = String(ARENA_CONTROL_ENABLED || "true").toLowerCase() === "true";
     const routingArr = parsePriorityRouting(PRIORITY_ROUTING);
     const routingText = Array.isArray(routingArr) ? routingArr.join(",") : "-";
 
