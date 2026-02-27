@@ -167,11 +167,26 @@ function getPreferredGreeting(customer) {
   return null; // belum ada preferensi
 }
 
-function greetWord(customer, style) {
-  // urgent tetap Bang (lebih cepat/ramah), kecuali Papa mau formal pun tetap Pak
+function greetWord(customer, style, userText = "") {
+  const t = String(userText || "").toLowerCase();
+
+  // kalau user pakai "pak"
+  if (/\bpak\b/.test(t)) return "Baik Pak.";
+
+  // kalau user pakai "bang"
+  if (/\bbang\b/.test(t)) return "Baik Bang.";
+
+  // kalau ada preferensi tersimpan, pakai itu
   const pref = getPreferredGreeting(customer);
-  if (pref) return pref;
-  return (style === "formal") ? "Pak" : "Bang";
+  if (pref === "Pak") return "Baik Pak.";
+  if (pref === "Bang") return "Baik Bang.";
+
+  // urgent default lebih sopan
+  if (style === "urgent") return "Baik Pak.";
+
+  // fallback
+  if (style === "formal") return "Baik Pak.";
+  return "Baik Bang.";
 }
 
 // ================= MEMORY SNIPPET (SAFE) =================
@@ -920,7 +935,11 @@ try {
     hasVehicle,
     buyingSignal: !!buying,
   });
-const greet = greetWord(db.customers[customerId], style);
+const greet = greetWord(
+  db.customers[customerId],
+  style,
+  body
+);
 const memorySnippet =
 buildMemorySnippet(db.customers[customerId], ticket);
 
