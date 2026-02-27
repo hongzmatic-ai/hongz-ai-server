@@ -630,6 +630,9 @@ async function webhookHandler(req, res) {
   } else {
     db.customers[customerId].lastSeen = nowISO();
   }
+try {
+  updatePreferredGreeting(db, db.customers[customerId], body, customerId);
+} catch (_) {}
 
   // ticket
   const ticket = getOrCreateTicket(db, customerId, from);
