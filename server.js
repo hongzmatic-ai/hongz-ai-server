@@ -345,10 +345,44 @@ function mustMapsOnly(aiText, userText) {
   const u = String(userText || "").toLowerCase();
   const userAskingLocation = /(alamat|lokasi|maps|map|di mana|dimana)/i.test(u);
   const looksLikeAddress = /(jl\.|jalan\s+\w|no\.|nomor\s+\d|kecamatan|kelurahan|kode pos)/i.test(low);
+
   if (userAskingLocation && looksLikeAddress) return `Untuk lokasi, silakan buka: ${MAPS_LINK}`;
   const aiClearlyInventing = /(jl\.|jalan\s+\w).*(no\.|nomor\s+\d)/i.test(low);
   if (aiClearlyInventing) return `Untuk lokasi, silakan buka: ${MAPS_LINK}`;
   return aiText;
+}
+
+// ✅ Natural opener randomizer (micro)
+function naturalOpener(style = "neutral") {
+  const elite = [
+    "Baik Bang, saya pahami kondisinya.",
+    "Oke Bang, saya mengerti gejalanya.",
+    "Saya paham arah masalahnya Bang.",
+    "Baik Bang, dari cerita abang saya sudah dapat gambaran awalnya."
+  ];
+
+  const casual = [
+    "Oke Bang, saya lihat dulu ya arahnya.",
+    "Siap Bang, saya sudah dapat bayangannya.",
+    "Baik Bang, pelan-pelan kita cek arahnya."
+  ];
+
+  const formal = [
+    "Baik Pak, saya pahami kondisinya.",
+    "Saya mengerti gejala yang Bapak maksud."
+  ];
+
+  let pool = elite;
+  if (style === "casual") pool = casual.concat(elite);
+  if (style === "formal") pool = formal.concat(elite);
+
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// helper kecil biar gak dobel opener kalau AI sudah buka dengan kalimat serupa
+function startsLikeOpener(text) {
+  const t = String(text || "").trim().toLowerCase();
+  return /^(baik|oke|ok|siap)\s+(bang|pak)\b/.test(t) || /^saya\s+paham\b/.test(t);
 }
 
 async function aiReply(userText, context) {
@@ -356,15 +390,24 @@ async function aiReply(userText, context) {
 
   try {
     const client = new OpenAI({ apiKey: OPENAI_API_KEY });
+
+    // style dari context kalau ada (urgent/formal/casual/neutral)
+    const style = String(context?.style || "neutral");
+
+    // 🧠 Natural Elite prompt (GPT yang atur, tapi kita kasih “bahasa” biar gak kelihatan sistem)
     const sys = [
       `Anda adalah Kepala Bengkel ${BIZ_NAME} di Medan.`,
-      "Gaya: mekanik senior. Jawaban singkat, tegas, tidak bertele-tele.",
-      "Aturan:",
+      "Karakter: mekanik senior, manusiawi, hangat-profesional. Jangan terdengar seperti bot.",
+      "Gaya jawaban: ringkas, tajam, relevan, tidak bertele-tele.",
+      "",
+      "ATURAN WAJIB:",
       "1) Jangan beri angka harga pasti.",
-      "2) Jika user tanya lokasi, jawab hanya link maps.",
+      `2) Jika user tanya lokasi/alamat → jawab hanya link maps: ${MAPS_LINK}`,
       "3) Maksimal 2 pertanyaan dalam 1 balasan.",
       `4) Jika darurat/tidak bisa jalan → sarankan jangan dipaksakan + minta share lokasi + arahkan voice call admin (${WHATSAPP_ADMIN}).`,
-      context?.laneRule ? `5) ${context.laneRule}` : "",
+      "5) Hindari kata yang terasa sistem/robotik seperti: 'saya tangkap', 'input diterima', 'ticket', 'stage'.",
+      "6) Jika lawan bicara ragu/sekadar tanya-tanya (3T/3M), jawab halus tapi tetap memandu ke info minimum (mobil+tahun+gejala).",
+      context?.laneRule ? `7) ${context.laneRule}` : "",
     ].filter(Boolean).join("\n");
 
     const resp = await withTimeout(
@@ -385,6 +428,13 @@ async function aiReply(userText, context) {
     if (!text) return null;
 
     text = mustMapsOnly(text, userText);
+
+    // ✅ Tambah opener micro (tanpa kelihatan sistem), tapi jangan dobel
+    if (!startsLikeOpener(text)) {
+      const opener = naturalOpener(style);
+      text = `${opener}\n\n${text}`;
+    }
+
     if (text.length > 900) text = text.slice(0, 900).trim() + "…";
     return text;
   } catch (e) {
