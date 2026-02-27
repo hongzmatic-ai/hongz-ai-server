@@ -503,6 +503,95 @@ function softClose({ lvl, lane, style }) {
     : "Boleh info mobil & tahun dulu ya Bang, sama keluhan yang paling terasa?";
 }
 
+// ================= PREFERRED GREETING MODE (SAFE PATCH) =================
+
+// ENV toggle (aman kalau tidak diset di Render)
+const PREFERRED_GREETING_ON =
+  String(process.env.PREFERRED_GREETING_MODE || "true").toLowerCase() === "true";
+
+const PREFERRED_GREETING_THRESHOLD =
+  Number(process.env.PREFERRED_GREETING_THRESHOLD || 2);
+
+const PREFERRED_GREETING_CD_MS =
+  Number(process.env.PREFERRED_GREETING_COOLDOWN_SEC || 30) * 1000;
+
+
+// --- detector ---
+function detectUserCallsUsPak(text) {
+  const raw = String(text || "").trim();
+  const t = raw.toLowerCase();
+  return /\bpak\b/.test(t) &&
+    /^(pak|permisi pak|halo pak|pagi pak|siang pak|malam pak)/i.test(raw);
+}
+
+function detectUserCallsUsBang(text) {
+  const raw = String(text || "").trim();
+  const t = raw.toLowerCase();
+  return /\bbang\b/.test(t) &&
+    /^(bang|halo bang|pagi bang|siang bang|malam bang)/i.test(raw);
+}
+
+
+// --- updater ---
+function updatePreferredGreeting(db, profile, body, customerId) {
+  try {
+    if (!PREFERRED_GREETING_ON) return;
+    if (!profile) return;
+
+    if (!db.meta) db.meta = {};
+    if (!db.meta.prefGreetCd) db.meta.prefGreetCd = {};
+
+    const key = `prefgreet:${customerId}`;
+    const last = Number(db.meta.prefGreetCd[key] || 0);
+    const now = Date.now();
+
+    if (now - last < PREFERRED_GREETING_CD_MS) return;
+
+    if (!profile.greet) {
+      profile.greet = { pakCount: 0, bangCount: 0, preferred: "" };
+    }
+
+    const saidPak = detectUserCallsUsPak(body);
+    const saidBang = detectUserCallsUsBang(body);
+
+    if (saidPak) profile.greet.pakCount += 1;
+    if (saidBang) profile.greet.bangCount += 1;
+
+    // threshold jadi formal permanen
+    if (profile.greet.pakCount >= PREFERRED_GREETING_THRESHOLD) {
+      profile.greet.preferred = "formal";
+    }
+
+    // kalau Bang jauh lebih dominan, reset
+    if (profile.greet.bangCount >= (profile.greet.pakCount + 3)) {
+      profile.greet.preferred = "";
+    }
+
+    db.meta.prefGreetCd[key] = now;
+
+  } catch (e) {
+    console.error("PreferredGreeting update failed:", e?.message || e);
+  }
+}
+
+
+// --- greeting builder (dipakai AI wrapper nanti) ---
+function buildGreeting(profile, style = "neutral") {
+  const p = profile || {};
+  const pref = String(p?.greet?.preferred || "");
+
+  const finalStyle = (pref === "formal") ? "formal" : style;
+
+  const name = String(p.name || "").trim();
+
+  if (name) {
+    if (/^pak\s+/i.test(name)) return name;
+    if (finalStyle === "formal") return `Pak ${name}`;
+    return name;
+  }
+
+  return (finalStyle === "formal") ? "Pak" : "Bang";
+}
 
 // ================= MAIN WEBHOOK =================
 async function webhookHandler(req, res) {
