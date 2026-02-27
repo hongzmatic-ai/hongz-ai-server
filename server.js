@@ -443,6 +443,67 @@ async function aiReply(userText, context) {
   }
 }
 
+// ================= NATURAL ELITE — STEP 2 HELPERS =================
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
+function detectSoftLowIntent(body) {
+  // 3T/3M versi halus (tanpa frontal)
+  const t = String(body || "").toLowerCase();
+
+  const manyAsksFewFacts =
+    (t.match(/\?/g) || []).length >= 2 && !hasVehicleInfo(body);
+
+  const priceProbe =
+    /berapa|biaya|harga|kisaran|range|murah|diskon|nego|budget|ongkos/i.test(t) &&
+    String(body || "").trim().length < 45;
+
+  const timeWasterVibes =
+    /cuma tanya|sekedar tanya|iseng|penasaran|nanya doang|lihat-lihat|compare|banding/i.test(t);
+
+  const wantCheapFastPerfect =
+    /murah|termurah|diskon besar|paling murah|langsung beres|cepat banget|garansi paling lama|tanpa bongkar/i.test(t);
+
+  return !!(manyAsksFewFacts || priceProbe || timeWasterVibes || wantCheapFastPerfect);
+}
+
+function authorityLevel({ score, isUrgent, hasLoc, hasVehicle, buyingSignal }) {
+  // makin serius → makin tegas (tanpa terlihat sistem)
+  let lvl = 1;
+  if (hasVehicle) lvl++;
+  if (buyingSignal) lvl++;
+  if (score >= 5) lvl++;
+  if (isUrgent || hasLoc) lvl += 2;
+  return clamp(lvl, 1, 5);
+}
+
+function softClose({ lvl, lane, style }) {
+  // closing psikologi halus (tanpa kata "closing")
+  // lvl 1-5
+  const isCasual = style === "casual";
+  const isFormal = style === "formal";
+
+  if (lvl >= 4) {
+    return isFormal
+      ? "Kalau Bapak berkenan, kirim hari & jam rencana datang. Biar kami siapkan slot cek cepat."
+      : "Kalau mau cepat beres, kirim hari & jam datang ya Bang. Biar admin siapin slot cek singkat.";
+  }
+
+  if (lvl === 3) {
+    if (lane === "AC") return isCasual
+      ? "Biar gak muter-muter, kalau sempat masuk bentar kita cek 15–30 menit ya Bang."
+      : "Biar tidak muter-muter, saran saya cek singkat 15–30 menit ya Bang.";
+    return isFormal
+      ? "Supaya arahnya tepat, lebih aman kita cek singkat di bengkel terlebih dulu."
+      : "Supaya arahnya tepat, paling aman kita cek singkat dulu ya Bang.";
+  }
+
+  // lvl 1-2: minta info minimum dulu, tetap hangat
+  return isFormal
+    ? "Boleh info mobil & tahunnya dulu, lalu keluhan yang paling terasa?"
+    : "Boleh info mobil & tahun dulu ya Bang, sama keluhan yang paling terasa?";
+}
+
+
 // ================= MAIN WEBHOOK =================
 async function webhookHandler(req, res) {
   const db = loadDBFile();
