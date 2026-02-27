@@ -174,6 +174,34 @@ function greetWord(customer, style) {
   return (style === "formal") ? "Pak" : "Bang";
 }
 
+// ================= MEMORY SNIPPET (SAFE) =================
+function buildMemorySnippet(customer, ticket) {
+  const c = customer || {};
+  const t = ticket || {};
+
+  const parts = [];
+
+  // prefer greeting
+  if (c.preferredGreeting) {
+    parts.push(`Preferred greeting: ${c.preferredGreeting}`);
+  }
+
+  // basic profile (kalau sudah ada)
+  if (c.name) parts.push(`Name: ${c.name}`);
+  if (c.vehicle) parts.push(`Vehicle: ${c.vehicle}`);
+  if (c.year) parts.push(`Year: ${c.year}`);
+
+  // last known issue (kalau ada)
+  if (c.lastIssue) parts.push(`Last issue: ${c.lastIssue}`);
+
+  // ticket context (ringan)
+  if (t.type) parts.push(`Lane: ${t.type}`);
+  if (t.stage != null) parts.push(`Stage: ${t.stage}`);
+  if (t.locationUrl) parts.push(`Last location: ${t.locationUrl}`);
+
+  return parts.length ? parts.join("\n") : "";
+}
+
 // ================= DETECTORS =================
 function detectStyle(body) {
   const raw = String(body || "");
