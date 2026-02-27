@@ -771,32 +771,105 @@ async function webhookHandler(req, res) {
     );
   }
 
-  // 7) DEFAULT: AI / fallback
-  const laneRule = priceOnly
-    ? "Jika user hanya tanya harga → minta info mobil+tahun+gejala lalu arahkan diagnosa."
-    : "";
 
-  const ai = await aiReply(body, { laneRule });
+  // 7) DEFAULT: AI / fallback — NATURAL ELITE v2
 
-  if (ai) {
-    saveDBFile(db);
-    return replyTwiML(res, [ai, "", confidenceLine(style), "", signatureShort()].join("\n"));
+  const hasVehicle = hasVehicleInfo(body);
+  const lowIntent = detectSoftLowIntent(body);
+  const isUrgent = (ticket.type === "TOWING") || cantDrive || hasLoc;
+  const lane = String(ticket.type || "GENERAL");
+
+  const lvl = authorityLevel({
+    score: Number(ticket.score || score || 0),
+    isUrgent,
+    hasLoc: !!hasLoc,
+    hasVehicle,
+    buyingSignal: !!buying,
+  });
+
+  // ===== Micro smalltalk (tidak muncul kalau urgent) =====
+  function microSmalltalk(style) {
+    if (isUrgent) return "";
+
+    const warm = [
+      "Semoga mobilnya masih aman ya Bang.",
+      "Tenang dulu ya Bang, kita pelan-pelan arahkan.",
+      "Yang penting kita pastikan dulu langkah paling aman."
+    ];
+
+    const pro = [
+      "Baik, kita pastikan arahnya tepat dulu.",
+      "Supaya tidak salah langkah, kita cek arahnya dulu.",
+    ];
+
+    const senior = [
+      "Kasus seperti ini sering terjadi, tapi masih bisa kita arahkan.",
+      "Biasanya ada pola tertentu, nanti kita cocokkan dulu."
+    ];
+
+    let pool = pro;
+    if (style === "warm") pool = warm.concat(pro);
+    if (style === "senior") pool = senior.concat(pro);
+
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
-  saveDBFile(db);
-  return replyTwiML(
-    res,
-    [
-      "Oke Bang, saya bantu arahkan dulu ya.",
-      "Boleh info *mobil & tahun* + *keluhan utama* (singkat) biar saya arahkan langkah paling cepat?",
-      priceOnly ? "Untuk biaya tergantung penyebabnya—biar akurat, kita pastikan diagnosanya dulu." : "",
+  const smalltalk = microSmalltalk(style);
+
+  const laneRule =
+    priceOnly
+      ? "Jika user hanya tanya harga tanpa info → minta mobil+tahun+gejala singkat, lalu arahkan ke diagnosa singkat."
+      : lowIntent
+        ? "Jika user masih lihat-lihat atau banyak tanya tanpa info → jawab hangat tapi arahkan minta mobil+tahun+gejala."
+        : "";
+
+  const aiCore = await aiReply(body, {
+    laneRule,
+    style
+  });
+
+  const closeLine = softClose({ lvl, lane, style });
+
+  // ===== Jika AI berhasil =====
+  if (aiCore) {
+
+    const out = [
+      smalltalk ? smalltalk : "",
+      aiCore,
+      "",
+      closeLine,
       "",
       confidenceLine(style),
       "",
       signatureShort(),
-    ].filter(Boolean).join("\n")
-  );
-}
+    ].filter(Boolean).join("\n");
+
+    saveDBFile(db);
+    return replyTwiML(res, out);
+  }
+
+  // ===== Fallback (kalau AI gagal) =====
+  const fallback = [
+    smalltalk ? smalltalk : "",
+    "Saya bantu arahkan dulu ya.",
+    hasVehicle
+      ? (style === "pro"
+          ? "Keluhan yang paling terasa apa ya Pak?"
+          : "Keluhan yang paling terasa apa ya Bang?")
+      : (style === "pro"
+          ? "Boleh info mobil & tahunnya dulu ya Pak?"
+          : "Boleh info mobil & tahun dulu ya Bang?"),
+    "",
+    closeLine,
+    "",
+    confidenceLine(style),
+    "",
+    signatureShort(),
+  ].filter(Boolean).join("\n");
+
+  saveDBFile(db);
+  return replyTwiML(res, fallback);
+
 
 // ================= ROUTES =================
 app.post("/twilio/webhook", async (req, res) => {
