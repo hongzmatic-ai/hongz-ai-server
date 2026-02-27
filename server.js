@@ -1091,7 +1091,7 @@ const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 // Pastikan PORT ada
 const PORT = Number(process.env.PORT || 3000);
 
-// Helper TwiML satu versi saja (hindari replyTwiml vs replyTwiML)
+// ✅ TwiML satu versi saja (hindari replyTwiml vs replyTwiML)
 function replyTwiML(res, message) {
   const twiml = new twilio.twiml.MessagingResponse();
   twiml.message(message || "Halo! Ada yang bisa kami bantu?");
@@ -1102,7 +1102,6 @@ function replyTwiML(res, message) {
 // Wrapper leadScore aman (kompatibel dengan leadScore lama yang butuh object lengkap)
 function computeLeadScoreSafe({ body, hasLoc, cmdTowing, cmdJadwal, cantDrive }) {
   try {
-    // kalau leadScore versi lengkap tersedia
     return leadScore({
       body,
       hasLocation: !!hasLoc,
@@ -1111,14 +1110,13 @@ function computeLeadScoreSafe({ body, hasLoc, cmdTowing, cmdJadwal, cantDrive })
       cantDrive: !!cantDrive,
     });
   } catch (_) {
-    // fallback sederhana biar tidak crash
     let s = 0;
     if (cantDrive) s += 5;
     if (hasLoc) s += 5;
     if (cmdTowing) s += 4;
     if (cmdJadwal) s += 3;
-    if (detectPremium && detectPremium(body)) s += 2;
-    if (detectPriceOnly && detectPriceOnly(body) && String(body || "").length < 35) s -= 2;
+    if (typeof detectPremium === "function" && detectPremium(body)) s += 2;
+    if (typeof detectPriceOnly === "function" && detectPriceOnly(body) && String(body || "").length < 35) s -= 2;
     return Math.max(0, Math.min(10, s));
   }
 }
@@ -1126,9 +1124,8 @@ function computeLeadScoreSafe({ body, hasLoc, cmdTowing, cmdJadwal, cantDrive })
 // Wrapper arenaClassify aman (kompatibel dengan versi lengkap)
 function classifyArenaSafe(payload) {
   try {
-    return arenaClassify(payload); // versi lengkap
+    return arenaClassify(payload);
   } catch (_) {
-    // fallback minimal
     return { lane: "GENERAL", reason: "FALLBACK" };
   }
 }
@@ -1160,7 +1157,7 @@ async function webhookHandler(req, res) {
 
   dlog("IN", { from, to, body, hasLocation: hasLoc });
 
-  // ===== MENU ABCD =====
+  // ===== MENU ABCD (1 langkah) =====
   const abcd = routeABCD(textLower);
   if (abcd) return replyTwiML(res, abcd);
 
@@ -1213,36 +1210,33 @@ async function webhookHandler(req, res) {
   if (upper(body) === "STOP" || upper(body) === "UNSUBSCRIBE") {
     db.customers[customerId].optOut = true;
     await saveDB(db);
-    return replyTwiML(res, "Baik. Follow-up dinonaktifkan. Jika ingin aktif lagi, ketik START.");
+    return replyTwiML(res, "Baik Bang. Follow-up dinonaktifkan. Jika ingin aktif lagi, ketik START.");
   }
 
   if (upper(body) === "START" || upper(body) === "SUBSCRIBE") {
     db.customers[customerId].optOut = false;
     await saveDB(db);
-    return replyTwiML(res, "Siap. Follow-up diaktifkan kembali. Silakan tulis keluhan Anda.");
+    return replyTwiML(res, "Siap Bang. Follow-up diaktifkan kembali. Silakan tulis keluhan Anda.");
   }
 
-  // ✅ Ticket dibuat dulu
+  // ✅ Ticket dibuat dulu (sebelum routing cepat)
   const ticket = getOrCreateTicket(db, customerId, from);
 
-  // ✅ Update memory
+  // ✅ Update memory customer
   updateProfileFromText(db, customerId, body);
 
-// ===== QUICK BOOKING HANDLER (robust) =====
-const quick = textLower.trim();
-
-if (/^(a|1)\b/.test(quick)) {   // a, a bang, 1, 1 bang, 1.
-  updateTicket(ticket, { type: "JADWAL", stage: 3 });
-  await saveDB(db);
-
-  return replyTwiML(
-    res,
-    "Siap Bang ✅\n\nSilakan kirim:\n1) Hari & jam datang\n2) Nomor plat\n\nAdmin akan siapkan slot untuk Anda."
-  );
-}
+  // ===== QUICK BOOKING HANDLER (A / 1) — robust =====
+  const quick = textLower.trim();
+  if (/^(a|1)\b/.test(quick)) {
+    updateTicket(ticket, { type: "JADWAL", stage: 3 });
+    await saveDB(db);
+    return replyTwiML(
+      res,
+      "Siap Bang ✅\n\nSilakan kirim:\n1) Hari & jam datang\n2) Nomor plat\n\nAdmin akan siapkan slot untuk Anda."
+    );
+  }
 
   // ---- ROUTING cepat (tanpa GPT) ----
-  // hanya jalan setelah ticket ada
   const routed = routeCustomerText(body, ticket?.type || "GENERAL");
   if (routed) {
     ticket.lastBotAtMs = nowMs();
@@ -1255,7 +1249,6 @@ if (/^(a|1)\b/.test(quick)) {   // a, a bang, 1, 1 bang, 1.
   const cmdJadwal = isCommand(body, "JADWAL");
 
   // ---- Detections ----
-  // PENTING: detectAC jangan dobel definisi di file.
   const acMode = detectAC(body);
   const noStart = detectNoStart(body);
   const cantDrive = detectCantDrive(body);
@@ -1265,7 +1258,7 @@ if (/^(a|1)\b/.test(quick)) {   // a, a bang, 1, 1 bang, 1.
 
   const vInfo = hasVehicleInfo(body);
   const sInfo = hasSymptomInfo(body);
-  const suspicious = priceOnly && String(body || "").length < 35;
+  const suspicious = !!(priceOnly && String(body || "").length < 35);
 
   // ---- Sticky type ----
   if (acMode) updateTicket(ticket, { type: "AC" });
@@ -1350,7 +1343,7 @@ if (/^(a|1)\b/.test(quick)) {   // a, a bang, 1, 1 bang, 1.
     return replyTwiML(
       res,
       [
-        "Baik, lokasi sudah kami terima ✅",
+        "Baik Bang, lokasi sudah kami terima ✅",
         "Admin akan follow up untuk langkah berikutnya (termasuk evakuasi/towing bila diperlukan).",
         "",
         confidenceLine(style),
@@ -1389,7 +1382,13 @@ if (/^(a|1)\b/.test(quick)) {   // a, a bang, 1, 1 bang, 1.
 
   let replyText;
   if (ai) {
-    replyText = [ai, "", confidenceLine(style), "", signatureShort()].join("\n");
+    replyText = [
+      ai.trim(),
+      "",
+      confidenceLine(style),
+      "",
+      signatureShort(),
+    ].join("\n");
   } else {
     const triageQ =
       arena.lane === "TECHNICAL"
@@ -1403,9 +1402,7 @@ if (/^(a|1)\b/.test(quick)) {   // a, a bang, 1, 1 bang, 1.
       confidenceLine(style),
       "",
       signatureShort(),
-    ]
-      .filter(Boolean)
-      .join("\n");
+    ].filter(Boolean).join("\n");
   }
 
   ticket.lastBotAtMs = nowMs();
@@ -1423,10 +1420,11 @@ app.post("/twilio/webhook", async (req, res) => {
       from: req.body?.From,
       body: req.body?.Body,
     });
+
     return await webhookHandler(req, res);
   } catch (e) {
     console.error("webhook error", e?.message || e);
-    return replyTwiML(res, "Maaf ya, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
+    return replyTwiML(res, "Maaf ya Bang, sistem lagi padat. Silakan ulangi pesan Anda sebentar lagi 🙏");
   }
 });
 
@@ -1439,6 +1437,7 @@ app.get("/cron/followup", async (req, res) => {
   try {
     const key = String(req.query.key || "");
     if (!CRON_KEY || key !== CRON_KEY) return res.status(403).send("Forbidden");
+
     if (String(process.env.FOLLOWUP_ENABLED || "false").toLowerCase() !== "true") {
       return res.status(200).send("Follow-up disabled");
     }
@@ -1449,6 +1448,7 @@ app.get("/cron/followup", async (req, res) => {
 
     for (const t of tickets) {
       if (!t.from) continue;
+
       const cust = db.customers?.[t.customerId];
       if (cust?.optOut) continue;
       if (t.status === "CLOSED") continue;
