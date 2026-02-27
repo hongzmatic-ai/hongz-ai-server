@@ -891,6 +891,7 @@ try {
     hasVehicle,
     buyingSignal: !!buying,
   });
+const greet = greetWord(db.customers[customerId], style);
 
   // ===== Micro smalltalk (tidak muncul kalau urgent) =====
   function microSmalltalk(style) {
