@@ -1,18 +1,103 @@
 /*
- * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — RAJA MEDAN FINAL (STABLE)
+ * HONGZ AI SERVER — HYBRID C+ ELITE (ONE FILE) — CLEAN FINAL (STABLE)
  * deps: express, body-parser, twilio, openai (^4)
  * optional: firebase-admin (only if FIRESTORE_ENABLED="true")
  */
 
 const express = require("express");
+const bodyParser = require("body-parser");
+const twilio = require("twilio");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const OpenAI = require("openai");
 
-// ---- firebase-admin OPTIONAL (biar gak crash kalau belum diinstall) ----
+// ================= ENV (SAFE) =================
+const {
+  // Twilio
+  TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN,
+  TWILIO_WHATSAPP_FROM,
+  ADMIN_WHATSAPP_TO,
+  MONITOR_WHATSAPP_TO,
+
+  // Optional
+  TWILIO_WEBHOOK_URL = "",
+
+  // OpenAI
+  OPENAI_API_KEY,
+  OPENAI_MODEL_PRIMARY,
+  OPENAI_MODEL_FALLBACK,
+  OPENAI_TIMEOUT_MS,
+  OPENAI_MAX_OUTPUT_TOKENS,
+  OPENAI_TEMPERATURE,
+
+  // Storage / cron / debug
+  DATA_DIR,
+  CRON_KEY,
+  DEBUG,
+} = process.env;
+
+// ===== SAFE ENV DEFAULTS (BIAR GAK CRASH) =====
+const ADMIN_NOTIFY_KEYWORDS = process.env.ADMIN_NOTIFY_KEYWORDS || "";
+const ADMIN_NOTIFY_ENABLED = process.env.ADMIN_NOTIFY_ENABLED || "false";
+const ADMIN_NOTIFY_MIN_SCORE = process.env.ADMIN_NOTIFY_MIN_SCORE || "5";
+const ADMIN_NOTIFY_COOLDOWN_SEC = process.env.ADMIN_NOTIFY_COOLDOWN_SEC || "60";
+
+const MONITOR_LEVEL = process.env.MONITOR_LEVEL || "ALL";
+const MONITOR_COOLDOWN_SEC = process.env.MONITOR_COOLDOWN_SEC || "20";
+
+const FOLLOWUP_ENABLED = process.env.FOLLOWUP_ENABLED || "false";
+const FOLLOWUP_MAX_PER_CUSTOMER = process.env.FOLLOWUP_MAX_PER_CUSTOMER || "2";
+const FOLLOWUP_COOLDOWN_HOURS = process.env.FOLLOWUP_COOLDOWN_HOURS || "24";
+const FOLLOWUP_STAGE1_HOURS = process.env.FOLLOWUP_STAGE1_HOURS || "18";
+const FOLLOWUP_STAGE2_HOURS = process.env.FOLLOWUP_STAGE2_HOURS || "48";
+
+const ANTI_JEBEH_ENABLED = process.env.ANTI_JEBEH_ENABLED || "true";
+const ANTI_JEBEH_STRICT = process.env.ANTI_JEBEH_STRICT || "true";
+const ANTI_JEBEH_MIN_INFO_REQUIRED = process.env.ANTI_JEBEH_MIN_INFO_REQUIRED || "true";
+const ANTI_JEBEH_STRIKES_LOCK = process.env.ANTI_JEBEH_STRIKES_LOCK || "2";
+
+// ---------- OpenAI defaults ----------
+const OPENAI_MODEL_PRIMARY_FINAL = OPENAI_MODEL_PRIMARY || "gpt-4o";
+const OPENAI_MODEL_FALLBACK_FINAL = OPENAI_MODEL_FALLBACK || "gpt-4o-mini";
+const OPENAI_TIMEOUT_MS_FINAL = Number(OPENAI_TIMEOUT_MS || 9000);
+const OPENAI_MAXTOKENS_FINAL = Number(OPENAI_MAX_OUTPUT_TOKENS || 260);
+const OPENAI_TEMPERATURE_FINAL = Number(OPENAI_TEMPERATURE || 0.30);
+
+// ---------- Arena / routing ----------
+const ARENA_CONTROL_ENABLED = process.env.ARENA_CONTROL_ENABLED || "true";
+const PRIORITY_ROUTING = process.env.PRIORITY_ROUTING || "1,2,3,4";
+const ARENA_MAX_QUESTIONS = process.env.ARENA_MAX_QUESTIONS || "2";
+
+// ---------- Towing ----------
+const TOWING_STYLE = process.env.TOWING_STYLE || "3";
+
+// ---------- Branding ----------
+const BIZ_NAME = process.env.BIZ_NAME || "Hongz Bengkel – Spesialis Transmisi Matic";
+const BIZ_ADDRESS = process.env.BIZ_ADDRESS || "Jl. M. Yakub No.10B, Medan Perjuangan";
+const BIZ_HOURS = process.env.BIZ_HOURS || "Senin–Sabtu 09.00–17.00";
+const MAPS_LINK = process.env.MAPS_LINK || "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9";
+const WHATSAPP_ADMIN = process.env.WHATSAPP_ADMIN || "https://wa.me/6281375430728";
+const WHATSAPP_CS = process.env.WHATSAPP_CS || "https://wa.me/6285752965167";
+
+// ---------- Storage default ----------
+const DATA_DIR_FINAL = DATA_DIR || "./data";
+
+// ---------- Debug ----------
+const IS_DEBUG = String(DEBUG || "false").toLowerCase() === "true";
+
+// ================= APP =================
+const app = express();
+app.use(bodyParser.urlencoded({ extended: false })); // Twilio form-urlencoded
+app.use(bodyParser.json());
+
+// ================= FIRESTORE OPTIONAL (AIRBAG) =================
 let admin = null;
 function initFirestore() {
   if (process.env.FIRESTORE_ENABLED !== "true") return null;
 
   try {
-    // require di dalam try supaya kalau module gak ada -> fallback JSON
     admin = require("firebase-admin");
   } catch (e) {
     console.warn("[Firestore] firebase-admin not installed. Fallback to JSON file DB.");
@@ -42,100 +127,88 @@ function initFirestore() {
     return null;
   }
 }
+const fsdb = initFirestore();
 
-const fsdb = initFirestore(); // null kalau belum diaktifkan / module belum ada
+// ================= STORAGE (SAFE) =================
+function ensureDir(dir) {
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+}
+ensureDir(DATA_DIR_FINAL);
 
-const bodyParser = require("body-parser");
-const twilio = require("twilio");
-const fs = require("fs");
-const path = require("path");
-const crypto = require("crypto");
+const DB_FILE = path.join(DATA_DIR_FINAL, "hongz_enterprise_db.json");
 
-const OpenAI = require("openai");
+function loadDBFile() {
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  } catch (_) {
+    return { customers: {}, tickets: {}, events: [] };
+  }
+}
+function saveDBFile(db) {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf8");
+  } catch (e) {
+    console.error("DB save failed:", e?.message || e);
+  }
+}
 
-// ---------------- ENV (SAFE) ----------------
-const {
-  // Twilio
-  TWILIO_ACCOUNT_SID,
-  TWILIO_AUTH_TOKEN,
-  TWILIO_WHATSAPP_FROM,
-  ADMIN_WHATSAPP_TO,
-  MONITOR_WHATSAPP_TO,
+async function loadDB() {
+  if (!fsdb) return loadDBFile();
+  const snap = await fsdb.collection("app").doc("db").get();
+  return snap.exists ? snap.data() : { customers: {}, tickets: {}, events: [] };
+}
+async function saveDB(db) {
+  if (!fsdb) return saveDBFile(db);
+  await fsdb.collection("app").doc("db").set(db, { merge: true });
+}
 
-  // Optional
-  TWILIO_WEBHOOK_URL = "",
+// ================= HELPERS =================
+function nowISO() { return new Date().toISOString(); }
+function nowMs() { return Date.now(); }
 
-  // OpenAI
-  OPENAI_API_KEY,
-  OPENAI_MODEL_PRIMARY,
-  OPENAI_MODEL_FALLBACK,
-  OPENAI_TIMEOUT_MS,
-  OPENAI_MAX_OUTPUT_TOKENS,
-  OPENAI_TEMPERATURE,
+function sha16(s) {
+  return crypto.createHash("sha256").update(String(s)).digest("hex").slice(0, 16);
+}
 
-  // Storage / cron / debug
-  DATA_DIR,
-  CRON_KEY,
-  DEBUG,
-} = process.env;
+function normText(s) { return String(s || "").replace(/\u200b/g, "").trim(); }
+function upper(s) { return normText(s).toUpperCase(); }
 
-// ===== SAFE ENV DEFAULTS (WAJIB BIAR GAK CRASH) =====
-const ADMIN_NOTIFY_KEYWORDS = process.env.ADMIN_NOTIFY_KEYWORDS || "";
-const ADMIN_NOTIFY_ENABLED = process.env.ADMIN_NOTIFY_ENABLED || "false";
-const ADMIN_NOTIFY_MIN_SCORE = process.env.ADMIN_NOTIFY_MIN_SCORE || "5";
-const ADMIN_NOTIFY_COOLDOWN_SEC = process.env.ADMIN_NOTIFY_COOLDOWN_SEC || "60";
+function isCommand(body, cmd) {
+  const t = upper(body);
+  const c = String(cmd).toUpperCase();
+  return t === c || t.startsWith(c + " ") || t.includes("\n" + c) || t.includes(" " + c + " ");
+}
 
-const MONITOR_LEVEL = process.env.MONITOR_LEVEL || "ALL";
-const MONITOR_COOLDOWN_SEC = process.env.MONITOR_COOLDOWN_SEC || "20";
+function normalizeFrom(v) { return String(v || "").trim(); }
 
-const FOLLOWUP_ENABLED = process.env.FOLLOWUP_ENABLED || "false";
-const FOLLOWUP_MAX_PER_CUSTOMER = process.env.FOLLOWUP_MAX_PER_CUSTOMER || "2";
-const FOLLOWUP_COOLDOWN_HOURS = process.env.FOLLOWUP_COOLDOWN_HOURS || "24";
-const FOLLOWUP_STAGE1_HOURS = process.env.FOLLOWUP_STAGE1_HOURS || "18";
-const FOLLOWUP_STAGE2_HOURS = process.env.FOLLOWUP_STAGE2_HOURS || "48";
+function cleanMsisdn(from) {
+  return String(from || "").replace(/^whatsapp:\+?/i, "").replace(/[^\d]/g, "");
+}
+function toWaMe(from) {
+  const n = cleanMsisdn(from);
+  return n ? `https://wa.me/${n}` : "-";
+}
 
-const ANTI_JEBEH_ENABLED = process.env.ANTI_JEBEH_ENABLED || "true";
-const ANTI_JEBEH_STRICT = process.env.ANTI_JEBEH_STRICT || "true";
-const ANTI_JEBEH_MIN_INFO_REQUIRED = process.env.ANTI_JEBEH_MIN_INFO_REQUIRED || "true";
-const ANTI_JEBEH_STRIKES_LOCK = process.env.ANTI_JEBEH_STRIKES_LOCK || "2";
+function isAdmin(from) {
+  const a = normalizeFrom(ADMIN_WHATSAPP_TO).toLowerCase();
+  const f = normalizeFrom(from).toLowerCase();
+  return a && f && a === f;
+}
+function isMonitor(from) {
+  const m = normalizeFrom(MONITOR_WHATSAPP_TO || "").toLowerCase();
+  const f = normalizeFrom(from).toLowerCase();
+  return !!(m && f && m === f);
+}
 
-// ---------- OpenAI defaults ----------
-const OPENAI_MODEL_PRIMARY_FINAL  = OPENAI_MODEL_PRIMARY  || "gpt-4o";
-const OPENAI_MODEL_FALLBACK_FINAL = OPENAI_MODEL_FALLBACK || "gpt-4o-mini";
-const OPENAI_TIMEOUT_MS_FINAL     = Number(OPENAI_TIMEOUT_MS || 9000);
-const OPENAI_MAXTOKENS_FINAL      = Number(OPENAI_MAX_OUTPUT_TOKENS || 260);
-const OPENAI_TEMPERATURE_FINAL    = Number(OPENAI_TEMPERATURE || 0.30);
+// ===== TwiML (SINGLE VERSION) =====
+function replyTwiML(res, message) {
+  const twiml = new twilio.twiml.MessagingResponse();
+  twiml.message(message || "Halo! Ada yang bisa kami bantu?");
+  res.type("text/xml");
+  return res.status(200).send(twiml.toString());
+}
 
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-
-// ---------- Arena / routing ----------
-const ARENA_CONTROL_ENABLED = process.env.ARENA_CONTROL_ENABLED || "true";
-const PRIORITY_ROUTING      = process.env.PRIORITY_ROUTING || "1,2,3,4";
-const ARENA_MAX_QUESTIONS   = process.env.ARENA_MAX_QUESTIONS || "2";
-
-// ---------- Towing ----------
-const TOWING_STYLE = process.env.TOWING_STYLE || "3";
-
-// ---------- Branding ----------
-const BIZ_NAME       = process.env.BIZ_NAME || "Hongz Bengkel – Spesialis Transmisi Matic";
-const BIZ_ADDRESS    = process.env.BIZ_ADDRESS || "Jl. M. Yakub No.10b, Medan Perjuangan";
-const BIZ_HOURS      = process.env.BIZ_HOURS || "Senin–Sabtu 09.00–17.00";
-const MAPS_LINK      = process.env.MAPS_LINK || "https://maps.app.goo.gl/CvFZ9FLNJRog7K4t9";
-const WHATSAPP_ADMIN = process.env.WHATSAPP_ADMIN || "https://wa.me/6281375430728";
-const WHATSAPP_CS    = process.env.WHATSAPP_CS || "https://wa.me/6285752965167";
-
-// ---------- Storage default ----------
-const DATA_DIR_FINAL = DATA_DIR || "./data";
-
-// ---------- Debug ----------
-const IS_DEBUG = String(DEBUG || "false").toLowerCase() === "true";
-
-// ---------------- APP ----------------
-const app = express();
-app.use(bodyParser.urlencoded({ extended: false })); // Twilio form-urlencoded
-app.use(bodyParser.json());
-
-// ---------------- LOCATION PARSER ----------------
+// ================= LOCATION PARSER =================
 function extractMapsLink(reqBody) {
   const body = String(reqBody?.Body ?? "").trim();
   if (!body) return null;
@@ -167,100 +240,10 @@ function extractLocation(reqBody) {
   return null;
 }
 
-// ---------------- STORAGE (FINAL - SAFE) ----------------
-function ensureDir(dir) {
-  try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
-}
-
-ensureDir(DATA_DIR_FINAL);
-
-const DB_FILE = path.join(DATA_DIR_FINAL, "hongz_enterprise_db.json");
-
-function loadDBFile() {
-  try {
-    return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-  } catch (_) {
-    return { customers: {}, tickets: {}, events: [] };
-  }
-}
-
-function saveDBFile(db) {
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf8");
-  } catch (e) {
-    console.error("DB save failed:", e?.message || e);
-  }
-}
-
-// Firestore hybrid (airbag)
-async function loadDB() {
-  if (!fsdb) return loadDBFile();
-  const snap = await fsdb.collection("app").doc("db").get();
-  return snap.exists ? snap.data() : { customers: {}, tickets: {}, events: [] };
-}
-
-async function saveDB(db) {
-  if (!fsdb) return saveDBFile(db);
-  await fsdb.collection("app").doc("db").set(db, { merge: true });
-}
-
-// ---------------- HELPERS (SAFE) ----------------
-function nowISO() { return new Date().toISOString(); }
-function nowMs() { return Date.now(); }
-
-function sha16(s) {
-  return crypto.createHash("sha256").update(String(s)).digest("hex").slice(0, 16);
-}
-
-function escapeXml(unsafe) {
-  return String(unsafe ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-function replyTwiML(res, text) {
-  res.type("text/xml");
-  return res.status(200).send(`<Response><Message>${escapeXml(text)}</Message></Response>`);
-}
-
-function normText(s) { return String(s || "").replace(/\u200b/g, "").trim(); }
-function upper(s) { return normText(s).toUpperCase(); }
-
-function isCommand(body, cmd) {
-  const t = upper(body);
-  const c = String(cmd).toUpperCase();
-  return t === c || t.startsWith(c + " ") || t.includes("\n" + c) || t.includes(" " + c + " ");
-}
-
-function normalizeFrom(v) { return String(v || "").trim(); }
-
-function cleanMsisdn(from) {
-  return String(from || "").replace(/^whatsapp:\+?/i, "").replace(/[^\d]/g, "");
-}
-function toWaMe(from) {
-  const n = cleanMsisdn(from);
-  return n ? `https://wa.me/${n}` : "-";
-}
-
-function isAdmin(from) {
-  const a = normalizeFrom(ADMIN_WHATSAPP_TO).toLowerCase();
-  const f = normalizeFrom(from).toLowerCase();
-  return a && f && a === f;
-}
-
-function isMonitor(from) {
-  const m = normalizeFrom(MONITOR_WHATSAPP_TO || "").toLowerCase();
-  const f = normalizeFrom(from).toLowerCase();
-  return !!(m && f && m === f);
-}
-
-// ---------------- SIGNATURES ----------------
+// ================= SIGNATURES =================
 function confidenceLine(style = "neutral") {
-  if (style === "casual") return "✅ Tenang ya, kita bantu sampai jelas langkahnya 🙂";
-  return "✅ Tenang ya, kami bantu sampai jelas langkahnya.";
+  if (style === "casual") return "✅ Tenang ya Bang, kita bantu sampai jelas langkahnya 🙂";
+  return "✅ Tenang ya Bang, kami bantu sampai jelas langkahnya.";
 }
 
 function signatureShort() {
@@ -301,7 +284,7 @@ function signatureTowing(style = "3") {
   ].join("\n");
 }
 
-// ---------------- DETECTORS (SINGLE SOURCE OF TRUTH) ----------------
+// ================= DETECTORS (SINGLE SOURCE OF TRUTH) =================
 function detectNoStart(body) {
   const t = String(body || "").toLowerCase();
   return /tidak bisa hidup|gak bisa hidup|ga bisa hidup|tidak bisa starter|gak bisa starter|ga bisa starter|starter|aki tekor|accu tekor|lampu redup/i.test(t);
@@ -349,7 +332,7 @@ function askedForSchedule(body) {
   return /jadwal|booking|antri|datang jam|bisa hari|bisa besok|hari ini buka|kapan bisa masuk/i.test(t);
 }
 
-// ---------------- STYLE ----------------
+// ================= STYLE =================
 function detectStyle(body) {
   const raw = String(body || "");
   const t = raw.toLowerCase();
@@ -357,7 +340,6 @@ function detectStyle(body) {
   if (/darurat|tolong|cepat|mogok|bahaya|stuck/i.test(t)) return "urgent";
   if (/mohon|berkenan|terima kasih|bapak|ibu|pak|bu/i.test(t)) return "formal";
 
-  // casual: pendek / ada emoji
   const hasEmoji = /[\u{1F300}-\u{1FAFF}]/u.test(raw);
   if (t.length < 20 || hasEmoji) return "casual";
 
@@ -371,23 +353,29 @@ function composeTone(style) {
   return "ramah-profesional";
 }
 
-// ---------------- ARENA CLASSIFY ----------------
-function arenaClassify({ body }) {
+// ================= ARENA CLASSIFY (PRIORITY FIX) =================
+function arenaClassify({ body, hasLoc, cantDrive, cmdTowing, cmdJadwal }) {
+  // PRIORITAS keselamatan dulu
+  if (cmdTowing || cantDrive || hasLoc) return { lane: "URGENT", reason: "CANT_DRIVE_OR_LOCATION" };
+  // lalu booking
+  if (cmdJadwal || detectBuyingSignal(body)) return { lane: "BOOKING", reason: "BOOKING_SIGNAL" };
+  // baru AC / no start
   if (detectAC(body)) return { lane: "AC", reason: "AC_MODE" };
   if (detectNoStart(body)) return { lane: "NO_START", reason: "ENGINE_NO_START" };
-  if (detectCantDrive(body)) return { lane: "URGENT", reason: "CANT_DRIVE" };
-  if (detectBuyingSignal(body)) return { lane: "BOOKING", reason: "BOOKING_SIGNAL" };
+  // harga
   if (detectPriceOnly(body)) return { lane: "PRICE_TEST", reason: "PRICE_ONLY" };
+  // teknis
   if (hasVehicleInfo(body) || hasSymptomInfo(body)) return { lane: "TECHNICAL", reason: "VEHICLE_OR_SYMPTOM" };
+
   return { lane: "GENERAL", reason: "DEFAULT" };
 }
 
-// ---------------- LEAD SCORE ----------------
-function leadScore({ body }) {
+// ================= LEAD SCORE =================
+function leadScore({ body, hasLocation, isTowingCmd, isJadwalCmd, cantDrive }) {
   let score = 0;
-  if (detectCantDrive(body)) score += 5;
+  if (cantDrive || isTowingCmd || hasLocation) score += 5;
   if (detectPremium(body)) score += 3;
-  if (detectBuyingSignal(body)) score += 4;
+  if (detectBuyingSignal(body) || isJadwalCmd) score += 4;
   if (detectPriceOnly(body) && String(body || "").length < 30) score -= 2;
   return Math.max(0, Math.min(10, score));
 }
@@ -398,67 +386,8 @@ function leadTag(score) {
   return "🔵 NORMAL";
 }
 
-// ---------------- NOTIFY (Admin & Monitor) ----------------
-async function notifyAdmin({ title, ticket, reason, body, locationUrl }) {
-  const msg = [
-    title,
-    `Ticket: ${ticket.id} (${ticket.tag} | Score ${ticket.score}/10 | stage:${ticket.stage} | ${ticket.type})`,
-    `Lane: ${ticket?.arena?.lane || "-"} ${ticket?.arena?.reason ? `(${ticket.arena.reason})` : ""}`,
-    `Customer: ${ticket.from}`,
-    `Nomor: ${ticket.msisdn}`,
-    `wa.me: ${ticket.waMe}`,
-    reason ? `Alasan: ${reason}` : null,
-    locationUrl ? `Lokasi: ${locationUrl}` : null,
-    body ? `Pesan: ${String(body).slice(0, 500)}` : null,
-    "",
-    `Commands: HELP | LIST | STATS | CLAIM ${ticket.id} | CLOSE ${ticket.id} | NOTE ${ticket.id} ...`,
-  ].filter(Boolean).join("\n");
-
-  await twilioClient.messages.create({
-    from: TWILIO_WHATSAPP_FROM,
-    to: ADMIN_WHATSAPP_TO,
-    body: msg,
-  });
-}
-
-function monitorAllowedByLevel(score) {
-  const lvl = String(MONITOR_LEVEL || "ALL").toUpperCase();
-  if (lvl === "PRIORITY") return score >= 8;
-  if (lvl === "POTENTIAL") return score >= 5;
-  return true;
-}
-
-async function notifyMonitor({ title, ticket, body }) {
-  const to = normalizeFrom(MONITOR_WHATSAPP_TO);
-  if (!to) return;
-  if (normalizeFrom(ADMIN_WHATSAPP_TO).toLowerCase() === to.toLowerCase()) return;
-
-  const cd = Math.max(0, Number(MONITOR_COOLDOWN_SEC || 20)) * 1000;
-  const now = nowMs();
-  if (cd > 0 && ticket.lastRadarAtMs && (now - ticket.lastRadarAtMs) < cd) return;
-  ticket.lastRadarAtMs = now;
-
-  const shortMsg = (body || "").replace(/\s+/g, " ").slice(0, 140);
-
-  const msg = [
-    title,
-    `Ticket: ${ticket.id} | ${ticket.tag} | score:${ticket.score}/10 | stage:${ticket.stage} | ${ticket.type}`,
-    `Lane: ${ticket?.arena?.lane || "-"} ${ticket?.arena?.reason ? `(${ticket.arena.reason})` : ""}`,
-    `From: ${ticket.msisdn}`,
-    `wa.me: ${ticket.waMe}`,
-    ticket.locationUrl ? `Lokasi: ${ticket.locationUrl}` : null,
-    `Msg: ${shortMsg}${(body || "").length > 140 ? "…" : ""}`,
-  ].filter(Boolean).join("\n");
-
-  await twilioClient.messages.create({
-    from: TWILIO_WHATSAPP_FROM,
-    to,
-    body: msg,
-  });
-}
-
-// ---------------- INSTRUCTIONS ----------------
-function towingInstruction(ticket, humanStyle) {
+// ================= TOWING/JADWAL INSTRUCTIONS =================
+function towingInstruction(_ticket, humanStyle) {
   const style = String(TOWING_STYLE || "3");
   const lines = [];
 
@@ -550,10 +479,8 @@ function noStartInstruction(_ticket, style) {
   ].join("\n");
 }
 
-
-
-// ---------------- AI ----------------
-function withTimeout(promise, ms, label = 'TIMEOUT') {
+// ================= AI =================
+function withTimeout(promise, ms, label = "TIMEOUT") {
   return Promise.race([
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
@@ -561,8 +488,8 @@ function withTimeout(promise, ms, label = 'TIMEOUT') {
 }
 
 function mustMapsOnly(text, userText) {
-  const low = String(text || '').toLowerCase();
-  const u = String(userText || '').toLowerCase();
+  const low = String(text || "").toLowerCase();
+  const u = String(userText || "").toLowerCase();
   const userAskingLocation = /(alamat|lokasi|maps|map|di mana|dimana)/i.test(u);
   const looksLikeAddress = /(jl\.|jalan\s+\w|no\.|nomor\s+\d|kecamatan|kelurahan|kode pos)/i.test(low);
 
@@ -575,14 +502,14 @@ function mustMapsOnly(text, userText) {
 function buildSystemPrompt({ style, stage, ticket, userText, cantDrive, priceOnly }) {
   const tone = composeTone(style);
   const maxQ = Math.max(1, Number(ARENA_MAX_QUESTIONS || 2));
-  const lane = String(ticket?.arena?.lane || 'GENERAL');
+  const lane = String(ticket?.arena?.lane || "GENERAL");
 
   const laneRule =
-    lane === 'AC'
-      ? 'KONTEKS LANE=AC: Fokus AC. DILARANG membahas transmisi/gearbox kecuali user menyebut transmisi.'
-      : (lane === 'NO_START'
-          ? 'KONTEKS LANE=NO_START: Fokus mesin tidak hidup (aki/starter/bbm/ignition). DILARANG membahas transmisi.'
-          : 'KONTEKS LANE=GENERAL/TECH: Bahas transmisi hanya jika user menyebut gejala transmisi.');
+    lane === "AC"
+      ? "KONTEKS LANE=AC: Fokus AC. DILARANG membahas transmisi/gearbox kecuali user menyebut transmisi."
+      : (lane === "NO_START"
+          ? "KONTEKS LANE=NO_START: Fokus mesin tidak hidup (aki/starter/bbm/ignition). DILARANG membahas transmisi."
+          : "KONTEKS LANE=GENERAL/TECH: Bahas transmisi hanya jika user menyebut gejala transmisi.");
 
   return `
 Anda adalah Kepala Bengkel ${BIZ_NAME} di Medan.
@@ -610,11 +537,11 @@ async function aiTryModel(client, model, userText, sysPrompt, timeoutMs) {
   const resp = await withTimeout(
     client.chat.completions.create({
       model,
-      temperature: Number(OPENAI_TEMPERATURE || 0.30),
-      max_tokens: Number(OPENAI_MAX_OUTPUT_TOKENS || 260),
+      temperature: OPENAI_TEMPERATURE_FINAL,
+      max_tokens: OPENAI_MAXTOKENS_FINAL,
       messages: [
-        { role: 'system', content: sysPrompt },
-        { role: 'user', content: userText },
+        { role: "system", content: sysPrompt },
+        { role: "user", content: userText },
       ],
     }),
     timeoutMs,
@@ -631,134 +558,134 @@ async function aiReply({ userText, ticket, style, stage, cantDrive, priceOnly })
 
   let client;
   try { client = new OpenAI({ apiKey: OPENAI_API_KEY }); }
-  catch (e) { console.error('OpenAI init failed:', e.message); return null; }
+  catch (e) { console.error("OpenAI init failed:", e.message); return null; }
 
-  const timeoutMs = Number(OPENAI_TIMEOUT_MS) || 9000;
+  const timeoutMs = OPENAI_TIMEOUT_MS_FINAL;
   const sys = buildSystemPrompt({ style, stage, ticket, userText, cantDrive, priceOnly });
 
   try {
-    let text = await aiTryModel(client, OPENAI_MODEL_PRIMARY, userText, sys, timeoutMs);
-    if (!text && OPENAI_MODEL_FALLBACK && OPENAI_MODEL_FALLBACK !== OPENAI_MODEL_PRIMARY) {
-      text = await aiTryModel(client, OPENAI_MODEL_FALLBACK, userText, sys, timeoutMs);
+    let text = await aiTryModel(client, OPENAI_MODEL_PRIMARY_FINAL, userText, sys, timeoutMs);
+    if (!text && OPENAI_MODEL_FALLBACK_FINAL && OPENAI_MODEL_FALLBACK_FINAL !== OPENAI_MODEL_PRIMARY_FINAL) {
+      text = await aiTryModel(client, OPENAI_MODEL_FALLBACK_FINAL, userText, sys, timeoutMs);
     }
     if (!text) return null;
 
     text = mustMapsOnly(text, userText);
-    if (text.length > 900) text = text.slice(0, 900).trim() + '…';
+    if (text.length > 900) text = text.slice(0, 900).trim() + "…";
     return text;
   } catch (e) {
-    console.error('OpenAI failed:', e.message);
+    console.error("OpenAI failed:", e.message);
     return null;
   }
 }
 
-// ---------------- ADMIN COMMANDS ----------------
+// ================= ADMIN COMMANDS =================
 function adminHelp() {
   return [
-    '✅ Admin Panel Hongz',
-    '',
-    'Commands:',
-    'HELP / MENU',
-    'LIST',
-    'STATS',
-    'CLAIM T-12345',
-    'CLOSE T-12345',
-    'NOTE T-12345 isi...',
-  ].join('\n');
+    "✅ Admin Panel Hongz",
+    "",
+    "Commands:",
+    "HELP / MENU",
+    "LIST",
+    "STATS",
+    "CLAIM T-12345",
+    "CLOSE T-12345",
+    "NOTE T-12345 isi...",
+  ].join("\n");
 }
 
 function listTickets(db) {
   const all = Object.values(db.tickets || {});
   const active = all
-    .filter(t => t.status !== 'CLOSED')
+    .filter(t => t.status !== "CLOSED")
     .sort((a, b) => (b.lastInboundAtMs || 0) - (a.lastInboundAtMs || 0))
     .slice(0, 12);
 
-  if (!active.length) return 'Tidak ada tiket aktif saat ini.';
+  if (!active.length) return "Tidak ada tiket aktif saat ini.";
 
-  const lines = ['📋 Tiket Aktif (Top 12):'];
+  const lines = ["📋 Tiket Aktif (Top 12):"];
   for (const t of active) {
-    const shortMsg = (t.lastBody || '').replace(/\s+/g, ' ').slice(0, 28);
-    const lane = t?.arena?.lane ? ` | lane:${t.arena.lane}` : '';
-    lines.push(`${t.id} | ${t.tag} | ${t.status} | ${t.msisdn} | ${t.type} | stage:${t.stage}${lane} | ${t.locationUrl ? '📍' : '-'} | ${shortMsg}`);
+    const shortMsg = (t.lastBody || "").replace(/\s+/g, " ").slice(0, 28);
+    const lane = t?.arena?.lane ? ` | lane:${t.arena.lane}` : "";
+    lines.push(`${t.id} | ${t.tag} | ${t.status} | ${t.msisdn} | ${t.type} | stage:${t.stage}${lane} | ${t.locationUrl ? "📍" : "-"} | ${shortMsg}`);
   }
-  lines.push('');
-  lines.push('Ketik: CLAIM T-xxxxx / CLOSE T-xxxxx / NOTE T-xxxxx ...');
-  return lines.join('\n');
+  lines.push("");
+  lines.push("Ketik: CLAIM T-xxxxx / CLOSE T-xxxxx / NOTE T-xxxxx ...");
+  return lines.join("\n");
 }
 
 function statsTickets(db) {
   const all = Object.values(db.tickets || {});
-  const active = all.filter(t => t.status !== 'CLOSED');
-  const priority = active.filter(t => t.tag.includes('PRIORITY')).length;
-  const potential = active.filter(t => t.tag.includes('POTENTIAL')).length;
+  const active = all.filter(t => t.status !== "CLOSED");
+  const priority = active.filter(t => String(t.tag || "").includes("PRIORITY")).length;
+  const potential = active.filter(t => String(t.tag || "").includes("POTENTIAL")).length;
   const normal = active.length - priority - potential;
 
   const types = active.reduce((acc, t) => {
-    const k = t.type || 'GENERAL';
+    const k = t.type || "GENERAL";
     acc[k] = (acc[k] || 0) + 1;
     return acc;
   }, {});
   const typeLines = Object.keys(types).sort().map(k => `- ${k}: ${types[k]}`);
 
   const lanes = active.reduce((acc, t) => {
-    const k = t?.arena?.lane || 'UNKNOWN';
+    const k = t?.arena?.lane || "UNKNOWN";
     acc[k] = (acc[k] || 0) + 1;
     return acc;
   }, {});
   const laneLines = Object.keys(lanes).sort().map(k => `- ${k}: ${lanes[k]}`);
 
   return [
-    '📊 HONGZ SUMMARY',
+    "📊 HONGZ SUMMARY",
     `Aktif: ${active.length}`,
     `🔴 PRIORITY: ${priority}`,
     `🟡 POTENTIAL: ${potential}`,
     `🔵 NORMAL: ${normal}`,
-    '',
-    'Types:',
+    "",
+    "Types:",
     ...typeLines,
-    '',
-    'Arena Lanes:',
+    "",
+    "Arena Lanes:",
     ...laneLines,
-  ].join('\n');
+  ].join("\n");
 }
 
 function findTicket(db, ticketId) {
-  const id = String(ticketId || '').trim().toUpperCase();
+  const id = String(ticketId || "").trim().toUpperCase();
   return db.tickets?.[id] || null;
 }
 
 function handleAdminCommand(db, body) {
   const t = upper(body);
 
-  if (t === 'HELP' || t === 'MENU') return adminHelp();
-  if (t === 'LIST') return listTickets(db);
-  if (t === 'STATS') return statsTickets(db);
+  if (t === "HELP" || t === "MENU") return adminHelp();
+  if (t === "LIST") return listTickets(db);
+  if (t === "STATS") return statsTickets(db);
 
-  if (t.startsWith('CLAIM ')) {
+  if (t.startsWith("CLAIM ")) {
     const id = t.split(/\s+/)[1];
     const ticket = findTicket(db, id);
     if (!ticket) return `Ticket ${id} tidak ditemukan.`;
-    ticket.status = 'CLAIMED';
+    ticket.status = "CLAIMED";
     ticket.updatedAt = nowISO();
-    return `✅ ${ticket.id} di-CLAIM.\nCustomer: ${ticket.from}\nNomor: ${ticket.msisdn}\nwa.me: ${ticket.waMe}\nLokasi: ${ticket.locationUrl || '(belum ada)'}\nLane: ${ticket?.arena?.lane || '-'}`;
+    return `✅ ${ticket.id} di-CLAIM.\nCustomer: ${ticket.from}\nNomor: ${ticket.msisdn}\nwa.me: ${ticket.waMe}\nLokasi: ${ticket.locationUrl || "(belum ada)"}\nLane: ${ticket?.arena?.lane || "-"}`;
   }
 
-  if (t.startsWith('CLOSE ')) {
+  if (t.startsWith("CLOSE ")) {
     const id = t.split(/\s+/)[1];
     const ticket = findTicket(db, id);
     if (!ticket) return `Ticket ${id} tidak ditemukan.`;
-    ticket.status = 'CLOSED';
+    ticket.status = "CLOSED";
     ticket.updatedAt = nowISO();
     const cust = db.customers?.[ticket.customerId];
-    if (cust && cust.activeTicketId === ticket.id) cust.activeTicketId = '';
+    if (cust && cust.activeTicketId === ticket.id) cust.activeTicketId = "";
     return `✅ ${ticket.id} di-CLOSE.`;
   }
 
-  if (t.startsWith('NOTE ')) {
-    const parts = body.split(' ');
-    const id = (parts[1] || '').toUpperCase();
-    const note = body.split(' ').slice(2).join(' ').trim();
+  if (t.startsWith("NOTE ")) {
+    const parts = body.split(" ");
+    const id = (parts[1] || "").toUpperCase();
+    const note = body.split(" ").slice(2).join(" ").trim();
     const ticket = findTicket(db, id);
     if (!ticket) return `Ticket ${id} tidak ditemukan.`;
     if (!note) return `Format: NOTE ${id} isi catatan...`;
@@ -768,13 +695,13 @@ function handleAdminCommand(db, body) {
     return `📝 Note tersimpan untuk ${ticket.id}.`;
   }
 
-  return 'Perintah tidak dikenal. Ketik HELP.';
+  return "Perintah tidak dikenal. Ketik HELP.";
 }
 
-// ---------------- FOLLOW-UP ----------------
+// ================= FOLLOW-UP =================
 function isDueForFollowup(ticket) {
-  if (String(FOLLOWUP_ENABLED).toLowerCase() !== 'true') return false;
-  if (!ticket || ticket.status === 'CLOSED') return false;
+  if (String(FOLLOWUP_ENABLED).toLowerCase() !== "true") return false;
+  if (!ticket || ticket.status === "CLOSED") return false;
 
   const maxPer = Number(FOLLOWUP_MAX_PER_CUSTOMER || 2);
   const cooldownH = Number(FOLLOWUP_COOLDOWN_HOURS || 24);
@@ -796,45 +723,23 @@ function isDueForFollowup(ticket) {
 }
 
 function followupFallback(ticket) {
-  const lane = String(ticket?.arena?.lane || '');
-  const base = ticket.tag.includes('PRIORITY')
-    ? 'Kami follow-up sebentar ya, supaya kondisinya tidak melebar.'
-    : 'Kami follow-up ya—kalau masih sempat, boleh lanjut sedikit infonya.';
+  const lane = String(ticket?.arena?.lane || "");
+  const base = String(ticket.tag || "").includes("PRIORITY")
+    ? "Kami follow-up sebentar ya Bang, supaya kondisinya tidak melebar."
+    : "Kami follow-up ya Bang—kalau masih sempat, boleh lanjut sedikit infonya.";
 
   const ask =
-    lane === 'AC'
-      ? 'AC-nya sekarang dingin/tidak? Ada bunyi kompresor?'
-      : (lane === 'NO_START'
-          ? 'Saat distarter sekarang cekrek/lemot atau muter normal?'
-          : (ticket.stage <= 0 ? 'Boleh info mobil & tahunnya, plus keluhan yang paling terasa?' : 'Kondisinya masih sama atau ada perubahan?'));
+    lane === "AC"
+      ? "AC-nya sekarang dingin/tidak? Ada bunyi kompresor?"
+      : (lane === "NO_START"
+          ? "Saat distarter sekarang cekrek/lemot atau muter normal?"
+          : (Number(ticket.stage || 0) <= 0 ? "Boleh info mobil & tahunnya, plus keluhan yang paling terasa?" : "Kondisinya masih sama atau ada perubahan?"));
 
-  return [base, ask, 'Jika tidak ingin follow-up lagi, ketik STOP.'].join('\n');
+  return [base, ask, "Jika tidak ingin follow-up lagi, ketik STOP."].join("\n");
 }
 
-// ====== CUSTOMER MEMORY HELPERS ======
-function safeStr(x) {
-  return (x || "").toString().trim();
-}
-
-// ===== Detect AC keywords =====
-function detectAC(text) {
-  const t = String(text || "").toUpperCase();
-
-  const keywords = [
-    "AC",
-    "TIDAK DINGIN",
-    "DINGIN SEBENTAR",
-    "PANAS",
-    "KOMPRESOR",
-    "FREON",
-    "BLOWER",
-    "KIPAS",
-    "KONDENSOR",
-    "EVAPORATOR"
-  ];
-
-  return keywords.some(k => t.includes(k));
-}
+// ================= CUSTOMER MEMORY HELPERS =================
+function safeStr(x) { return (x || "").toString().trim(); }
 
 function getCust(db, customerId) {
   if (!db.customers) db.customers = {};
@@ -842,7 +747,6 @@ function getCust(db, customerId) {
   return db.customers[customerId];
 }
 
-// Update profile sederhana dari teks pelanggan
 function updateProfileFromText(db, customerId, text) {
   const cust = getCust(db, customerId);
   if (!cust) return;
@@ -852,7 +756,6 @@ function updateProfileFromText(db, customerId, text) {
 
   const t = safeStr(text);
 
-  // Deteksi "Mobil: Innova 2012" / "mobil innova 2012"
   const carMatch =
     t.match(/mobil\s*[:\-]?\s*([A-Za-z0-9 \-]{3,30})/i) ||
     t.match(/tipe\s*mobil\s*[:\-]?\s*([A-Za-z0-9 \-]{3,30})/i);
@@ -861,117 +764,31 @@ function updateProfileFromText(db, customerId, text) {
     cust.profile.car = safeStr(carMatch[1]).slice(0, 40);
   }
 
-  // Deteksi "Nama: Budi"
   const nameMatch = t.match(/nama\s*[:\-]?\s*([A-Za-z ]{2,30})/i);
   if (nameMatch && nameMatch[1]) {
     cust.profile.name = safeStr(nameMatch[1]).slice(0, 30);
   }
 
-  // Deteksi "Kota: Medan"
   const cityMatch = t.match(/kota\s*[:\-]?\s*([A-Za-z ]{2,30})/i);
   if (cityMatch && cityMatch[1]) {
     cust.profile.city = safeStr(cityMatch[1]).slice(0, 30);
   }
 }
 
-// Simpan ringkasan ticket ke history (max 10)
-function pushHistory(db, ticket) {
-  if (!ticket) return;
-  const customerId = ticket.customerId;
-  if (!customerId) return;
-
-  const cust = getCust(db, customerId);
-  if (!cust) return;
-
-  if (!Array.isArray(cust.history)) cust.history = [];
-
-  const item = {
-    id: ticket.id || "",
-    at: nowISO(),
-    lane: ticket.lane || "",
-    issue: ticket.issue || ticket.summary || "",
-    status: ticket.status || "",
-  };
-
-  cust.history.unshift(item);
-  cust.history = cust.history.slice(0, 10);
-
-  // cache juga di profile biar gampang dipakai prompt
-  if (!cust.profile) cust.profile = {};
-  cust.profile.lastIssue = item.issue || cust.profile.lastIssue || "";
-  cust.profile.lastLane = item.lane || cust.profile.lastLane || "";
-  cust.lastSeen = nowISO();
-}
-
-
-function routeCustomerText(text, topic = 'GENERAL') {
-  const t = String(text || '').trim().toLowerCase();
-
-// ===== AC STICKY =====
-if (topic === 'AC' || /\bac\b|freon|kompresor|blower|extra fan|kipas|dingin|panas/.test(t)) {
-  return (
-    "Siap Bang. Untuk *AC dingin sebentar lalu panas + kompresor kasar*, saya perlu 3 info:\n" +
-    "1) Saat mulai panas, kompresor masih nyambung (klik) atau putus?\n" +
-    "2) Extra fan depan radiator nyala kencang atau tidak?\n" +
-    "3) Pernah servis AC kapan?\n\n" +
-    "Kalau mau cepat beres: ketik *A* untuk booking ya Bang."
-  );
-}
-
-  // BOOKING
-  if (t.includes("jadwal") || t.includes("booking")) {
-    return "Siap Bang 🙏 Untuk booking, kirim *tipe mobil + tahun* ya.";
-  }
-
-  // TOWING
-  if (t.includes("towing") || t.includes("derek")) {
-    return "Siap darurat 🚗 Kirim *lokasi live* sekarang ya Bang.";
-  }
-
-  // ALAMAT
-  if (t.includes("alamat") || t.includes("lokasi")) {
-    return "📍 Hongz Bengkel Matic\nJl. Mohammad Yakub No.10B Medan\nBuka Senin–Sabtu 09.00–17.00";
-  }
-
-  // ===== AC (topic sticky) =====
-  if (topic === 'AC' || /\bac\b|freon|kompresor|blower|extra fan|kipas|dingin|panas/.test(t)) {
-    return (
-      "Siap Bang. Untuk *AC dingin sebentar lalu panas + kompresor kasar*, saya perlu 3 info:\n" +
-      "1) Saat mulai panas, kompresor masih nyambung (klik) atau putus?\n" +
-      "2) Extra fan depan radiator nyala kencang atau tidak?\n" +
-      "3) Pernah servis AC kapan?\n\n" +
-      "Kalau mau cepat beres: ketik *JADWAL* untuk booking ya Bang."
-    );
-  }
-
-  // TRANSMISI
-  if (t.includes("matic") || t.includes("transmisi")) {
-    return "Keluhan matic apa Bang?\n• Nendang?\n• Slip?\n• Delay masuk D?\n\nKirim *tipe mobil + tahun* ya.";
-  }
-
-  return null; // kalau tidak cocok, lanjut ke GPT
-}
-
-// =============================
-// MENU CLOSING A,B,C,D (FAST)
-// =============================
+// ================= MENU ABCD =================
 function routeABCD(text) {
   if (!text) return null;
   const t = text.trim().toLowerCase();
 
-  // kalau user ketik hanya A/B/C/D
   if (t === "a" || t === "a.") {
     return "✅ *A. Booking Service*\nKirim:\n1) *Tipe mobil + tahun*\n2) Keluhan singkat\n3) Mau datang jam berapa (09.00–17.00)\n\nContoh: *Avanza 2015, matic nendang, jam 10.*";
   }
-
   if (t === "b" || t === "b.") {
     return "✅ *B. Konsultasi Cepat*\nKirim:\n1) *Tipe mobil + tahun*\n2) Gejala (nendang/slip/delay/jedug/bunyi)\n3) Sudah ganti oli matic kapan?\n\nBiar kami arahkan langkah paling cepat.";
   }
-
   if (t === "c" || t === "c.") {
-    return "✅ *C. Alamat & Jam Buka*\n📍 Hongz Bengkel Matic\nJl. Mohammad Yakub No.10B Medan\n🕘 Senin–Sabtu 09.00–17.00\n\nKalau mau, ketik *A* untuk booking.";
+    return `✅ *C. Alamat & Jam Buka*\n📍 ${BIZ_NAME}\n🧭 Maps: ${MAPS_LINK}\n🕘 ${BIZ_HOURS}\n\nKalau mau, ketik *A* untuk booking.`;
   }
-
   if (t === "d" || t === "d.") {
     return "✅ *D. Darurat / Towing*\nKirim *lokasi live* + patokan (dekat apa) sekarang ya Bang.\nKalau mobil masih bisa jalan pelan, sebutkan *bisa jalan atau tidak*.";
   }
@@ -979,7 +796,6 @@ function routeABCD(text) {
   return null;
 }
 
-// Pesan menu utama (dipakai untuk balasan pertama / keyword "menu")
 function mainMenuText() {
   return (
 `Siap Bang 🙏 *Hongz Bengkel Matic*\n` +
@@ -992,19 +808,15 @@ function mainMenuText() {
   );
 }
 
-// ================= TICKET SYSTEM SAFE =================
-
+// ================= TICKET SYSTEM =================
 function getOrCreateTicket(db, customerId, from) {
   if (!db.tickets) db.tickets = {};
 
-  // cari ticket aktif
   let ticket = Object.values(db.tickets).find(
     t => t.customerId === customerId && t.status !== "CLOSED"
   );
-
   if (ticket) return ticket;
 
-  // buat ticket baru
   const id = "T-" + Math.floor(10000 + Math.random() * 90000);
 
   ticket = {
@@ -1015,14 +827,13 @@ function getOrCreateTicket(db, customerId, from) {
     type: "GENERAL",
     stage: 0,
     score: 0,
-    tag: "NORMAL",
+    tag: "🔵 NORMAL",
     createdAt: nowISO(),
     updatedAt: nowISO(),
     history: []
   };
 
   db.tickets[id] = ticket;
-
   return ticket;
 }
 
@@ -1031,44 +842,10 @@ function updateTicket(ticket, patch) {
   ticket.updatedAt = nowISO();
 }
 
-// ================= SAFE DETECTORS =================
-
-function askedForSchedule(text) {
-  const t = String(text || "").toLowerCase();
-  return /jadwal|booking|antri|datang jam|bisa hari|bisa besok|hari ini buka/i.test(t);
-}
-
-function detectPriceOnly(text) {
-  const t = String(text || "").toLowerCase();
-  return /berapa biaya|berapa harga|kisaran harga|ongkos/i.test(t);
-}
-
-function detectBuyingSignal(text) {
-  const t = String(text || "").toLowerCase();
-  return /mau datang|jadi datang|fix datang|oke saya ke sana/i.test(t);
-}
-
-function detectCantDrive(text) {
-  const t = String(text || "").toLowerCase();
-  return /tidak bisa jalan|gak bisa jalan|mogok|stuck/i.test(t);
-}
-
-function detectAC(text) {
-  return /ac/i.test(text);
-}
-
-function detectNoStart(text) {
-  const t = String(text || "").toLowerCase();
-  return /tidak bisa start|gak bisa start|starter mati/i.test(t);
-}
-
-// ---------------- MAIN WEBHOOK ----------------
-
+// ================= MAIN WEBHOOK =================
 // kecilin log debug biar aman
 function dlog(...args) {
-  if (String(process.env.DEBUG || "false").toLowerCase() === "true") {
-    console.log("[DLOG]", ...args);
-  }
+  if (IS_DEBUG) console.log("[DLOG]", ...args);
 }
 
 function envBool(v, def = false) {
@@ -1085,21 +862,13 @@ function parsePriorityRouting(csv) {
     .filter((s) => ["1", "2", "3", "4"].includes(s));
 }
 
-// Pastikan twilioClient ada
+// Twilio client
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
-// Pastikan PORT ada
+// PORT
 const PORT = Number(process.env.PORT || 3000);
 
-// ✅ TwiML satu versi saja (hindari replyTwiml vs replyTwiML)
-function replyTwiML(res, message) {
-  const twiml = new twilio.twiml.MessagingResponse();
-  twiml.message(message || "Halo! Ada yang bisa kami bantu?");
-  res.type("text/xml");
-  return res.status(200).send(twiml.toString());
-}
-
-// Wrapper leadScore aman (kompatibel dengan leadScore lama yang butuh object lengkap)
+// Wrapper leadScore aman
 function computeLeadScoreSafe({ body, hasLoc, cmdTowing, cmdJadwal, cantDrive }) {
   try {
     return leadScore({
@@ -1115,13 +884,13 @@ function computeLeadScoreSafe({ body, hasLoc, cmdTowing, cmdJadwal, cantDrive })
     if (hasLoc) s += 5;
     if (cmdTowing) s += 4;
     if (cmdJadwal) s += 3;
-    if (typeof detectPremium === "function" && detectPremium(body)) s += 2;
-    if (typeof detectPriceOnly === "function" && detectPriceOnly(body) && String(body || "").length < 35) s -= 2;
+    if (detectPremium(body)) s += 2;
+    if (detectPriceOnly(body) && String(body || "").length < 35) s -= 2;
     return Math.max(0, Math.min(10, s));
   }
 }
 
-// Wrapper arenaClassify aman (kompatibel dengan versi lengkap)
+// Wrapper arenaClassify aman
 function classifyArenaSafe(payload) {
   try {
     return arenaClassify(payload);
@@ -1157,7 +926,7 @@ async function webhookHandler(req, res) {
 
   dlog("IN", { from, to, body, hasLocation: hasLoc });
 
-  // ===== MENU ABCD (1 langkah) =====
+  // ===== MENU ABCD =====
   const abcd = routeABCD(textLower);
   if (abcd) return replyTwiML(res, abcd);
 
@@ -1219,7 +988,7 @@ async function webhookHandler(req, res) {
     return replyTwiML(res, "Siap Bang. Follow-up diaktifkan kembali. Silakan tulis keluhan Anda.");
   }
 
-  // ✅ Ticket dibuat dulu (sebelum routing cepat)
+  // ✅ Ticket dibuat dulu
   const ticket = getOrCreateTicket(db, customerId, from);
 
   // ✅ Update memory customer
@@ -1234,14 +1003,6 @@ async function webhookHandler(req, res) {
       res,
       "Siap Bang ✅\n\nSilakan kirim:\n1) Hari & jam datang\n2) Nomor plat\n\nAdmin akan siapkan slot untuk Anda."
     );
-  }
-
-  // ---- ROUTING cepat (tanpa GPT) ----
-  const routed = routeCustomerText(body, ticket?.type || "GENERAL");
-  if (routed) {
-    ticket.lastBotAtMs = nowMs();
-    await saveDB(db);
-    return replyTwiML(res, routed);
   }
 
   // ---- Commands ----
@@ -1262,8 +1023,8 @@ async function webhookHandler(req, res) {
 
   // ---- Sticky type ----
   if (acMode) updateTicket(ticket, { type: "AC" });
-  if (/jadwal|booking|antri|jam berapa/i.test(body)) updateTicket(ticket, { type: "JADWAL" });
-  if (/towing|derek|mogok|gak bisa jalan|ga bisa jalan|stuck/i.test(body)) updateTicket(ticket, { type: "TOWING" });
+  if (cmdJadwal || scheduleAsk || buyingSignal) updateTicket(ticket, { type: "JADWAL" });
+  if (cmdTowing || cantDrive || hasLoc) updateTicket(ticket, { type: "TOWING" });
 
   // ---- Lead score/tag ----
   const score = computeLeadScoreSafe({ body, hasLoc, cmdTowing, cmdJadwal, cantDrive });
@@ -1291,12 +1052,6 @@ async function webhookHandler(req, res) {
         cantDrive,
         cmdTowing,
         cmdJadwal,
-        buyingSignal,
-        scheduleAsk,
-        priceOnly,
-        vInfo,
-        sInfo,
-        suspicious,
       })
     : { lane: "OFF", reason: "DISABLED" };
 
@@ -1330,14 +1085,11 @@ async function webhookHandler(req, res) {
   if (db.events.length > 5000) db.events = db.events.slice(-2000);
 
   // ---- RULES PRIORITY ----
-
-  // RULE: maps
   if (/alamat|lokasi|maps|map|di mana|dimana/i.test(body)) {
     await saveDB(db);
     return replyTwiML(res, `Untuk lokasi, silakan buka: ${MAPS_LINK}`);
   }
 
-  // RULE: location received
   if (hasLoc) {
     await saveDB(db);
     return replyTwiML(
@@ -1353,25 +1105,21 @@ async function webhookHandler(req, res) {
     );
   }
 
-  // RULE: AC
   if (acMode || arena.lane === "AC") {
     await saveDB(db);
     return replyTwiML(res, acInstruction(ticket, style));
   }
 
-  // RULE: NO_START
   if (noStart || arena.lane === "NO_START") {
     await saveDB(db);
     return replyTwiML(res, noStartInstruction(ticket, style));
   }
 
-  // RULE: towing/cant drive
   if (cmdTowing || cantDrive || arena.lane === "URGENT") {
     await saveDB(db);
     return replyTwiML(res, towingInstruction(ticket, style));
   }
 
-  // RULE: jadwal
   if (cmdJadwal || arena.lane === "BOOKING") {
     await saveDB(db);
     return replyTwiML(res, jadwalInstruction(ticket, style));
@@ -1382,13 +1130,7 @@ async function webhookHandler(req, res) {
 
   let replyText;
   if (ai) {
-    replyText = [
-      ai.trim(),
-      "",
-      confidenceLine(style),
-      "",
-      signatureShort(),
-    ].join("\n");
+    replyText = [ai.trim(), "", confidenceLine(style), "", signatureShort()].join("\n");
   } else {
     const triageQ =
       arena.lane === "TECHNICAL"
@@ -1410,8 +1152,7 @@ async function webhookHandler(req, res) {
   return replyTwiML(res, replyText);
 }
 
-// ---------------- ROUTES ----------------
-
+// ================= ROUTES =================
 app.post("/twilio/webhook", async (req, res) => {
   try {
     console.log("[TWILIO HIT] /twilio/webhook", {
@@ -1420,7 +1161,6 @@ app.post("/twilio/webhook", async (req, res) => {
       from: req.body?.From,
       body: req.body?.Body,
     });
-
     return await webhookHandler(req, res);
   } catch (e) {
     console.error("webhook error", e?.message || e);
