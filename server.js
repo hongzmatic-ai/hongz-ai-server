@@ -438,6 +438,7 @@ async function aiReply(userText, context) {
     // 🧠 Natural Elite prompt (GPT yang atur, tapi kita kasih “bahasa” biar gak kelihatan sistem)
     const sys = [
       `Anda adalah Kepala Bengkel ${BIZ_NAME} di Medan.`,
+context?.memorySnippet || "",
       "Karakter: mekanik senior, manusiawi, hangat-profesional. Jangan terdengar seperti bot.",
       "Gaya jawaban: ringkas, tajam, relevan, tidak bertele-tele.",
       "",
