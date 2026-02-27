@@ -160,6 +160,19 @@ function signatureTowing() {
     `⚡ Darurat? Klik Admin untuk *voice call* (lebih cepat).`,
   ].join("\n");
 }
+function getPreferredGreeting(customer) {
+  const p = String(customer?.preferredGreeting || "").toLowerCase();
+  if (p === "formal") return "Pak";
+  if (p === "casual") return "Bang";
+  return null; // belum ada preferensi
+}
+
+function greetWord(customer, style) {
+  // urgent tetap Bang (lebih cepat/ramah), kecuali Papa mau formal pun tetap Pak
+  const pref = getPreferredGreeting(customer);
+  if (pref) return pref;
+  return (style === "formal") ? "Pak" : "Bang";
+}
 
 // ================= DETECTORS =================
 function detectStyle(body) {
