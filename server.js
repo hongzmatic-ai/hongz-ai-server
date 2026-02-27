@@ -920,6 +920,8 @@ try {
     buyingSignal: !!buying,
   });
 const greet = greetWord(db.customers[customerId], style);
+const memorySnippet =
+buildMemorySnippet(db.customers[customerId], ticket);
 
   // ===== Micro smalltalk (tidak muncul kalau urgent) =====
   function microSmalltalk(style) {
