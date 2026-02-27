@@ -216,8 +216,51 @@ function buildMemorySnippet(customer, ticket) {
 
   return parts.length ? parts.join("\n") : "";
 }
+// --- TOWING intent (biar TOWING gak nabrak chat biasa) ---
+function detectTowingIntent(body) {
+  const t = String(body || "").toLowerCase();
+
+  // intent towing / mogok / stuck / evakuasi
+  if (/towing|evakuasi|derek|di jalan|jalan tol|banjir|mogok|stuck|nyangkut|bahaya/i.test(t)) return true;
+
+  // "tidak bisa jalan / tidak bergerak / masuk D/R tapi tidak jalan"
+  if (detectCantDrive(body)) return true;
+
+  // gejala slip berat (kadang user sebut "selip" tapi masih bisa jalan pelan)
+  if (/selip parah|selip berat|rpm naik tapi|ga narik sama sekali|tidak narik/i.test(t)) return true;
+
+  return false;
+}
+
+// ping / basa-basi singkat yang sering bikin towing template keulang
+function isGenericPing(body) {
+  const t = String(body || "").toLowerCase().trim();
+  return /^(bang|pak|pagi|siang|malam|halo|hai|permisi|tes|test|cek|ok|oke|ya|iya|sip|siap|mau tanya|nanya)$/i.test(t);
+}
+
+// signature towing cukup 1x per ticket (biar gak spam panjang)
+function towingSignatureOnce(ticket) {
+  if (ticket && ticket._towingSigSent) return ""; // sudah pernah kirim
+  if (ticket) ticket._towingSigSent = true;
+  return "\n\n" + signatureTowing();
+}
 
 // ================= DETECTORS =================
+function detectTowingIntent(body) {
+  const t = String(body || "").toLowerCase();
+
+  // explicit towing / derek
+  if (/towing|evakuasi|derek|ditarik|mobil mogok di jalan|jemput/i.test(t)) {
+    return true;
+  }
+
+  // benar-benar tidak bisa jalan sama sekali
+  if (/tidak bisa jalan sama sekali|tidak bisa bergerak sama sekali|stuck total|macet total/i.test(t)) {
+    return true;
+  }
+
+  return false;
+}
 function detectStyle(body) {
   const raw = String(body || "");
   const t = raw.toLowerCase();
@@ -789,25 +832,31 @@ try {
     );
   }
 
-  // 3) Towing / tidak bisa jalan (urgent)
-  if (ticket.type === "TOWING") {
-    saveDBFile(db);
-    return replyTwiML(
-      res,
-      [
-        "Baik Bang.",
-        "Kalau unit sudah *tidak bisa jalan/bergerak*, jangan dipaksakan dulu — bisa memperparah kerusakan.",
-        "",
-        "Silakan kirim *share lokasi sekarang*.",
-        `⚡ Untuk respons tercepat, langsung *voice call Admin*: ${WHATSAPP_ADMIN}`,
-        "",
-        confidenceLine(style),
-        "",
-        signatureTowing(),
-      ].join("\n")
-    );
-  }
+  // 3) Towing / tidak bisa jalan (urgent) — SMART STICKY (NO LOOP)
+if (ticket.type === "TOWING") {
+  const towingIntent = detectTowingIntent(body) || hasLoc || (style === "urgent");
+  const pingOnly = isGenericPing(body);
 
+  // Kalau user cuma ping ("bang/pak/mau tanya/tes") -> jangan spam towing template.
+  // Biarkan jatuh ke DEFAULT AI agar jawab nyambung & manusiawi.
+  if (!towingIntent && pingOnly) {
+    // do nothing (lanjut ke bawah)
+  } else if (towingIntent) {
+    const msg = [
+      "Baik Bang.",
+      "Kalau unit sudah *tidak bisa jalan/bergerak*, jangan dipaksakan dulu — bisa memperparah kerusakan.",
+      "",
+      "Silakan kirim *share lokasi sekarang*.",
+      `⚡ Untuk respons tercepat, langsung *voice call Admin*: ${WHATSAPP_ADMIN}`,
+      "",
+      confidenceLine(style),
+      towingSignatureOnce(ticket), // signature 1x per ticket
+    ].filter(Boolean).join("\n");
+
+    saveDBFile(db); // simpan setelah flag _towingSigSent di-set
+    return replyTwiML(res, msg);
+  }
+}
   // 4) JADWAL / booking
   if (ticket.type === "JADWAL") {
     saveDBFile(db);
