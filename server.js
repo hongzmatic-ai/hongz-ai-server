@@ -1084,13 +1084,19 @@ async function webhookHandler(req, res) {
   });
   if (db.events.length > 5000) db.events = db.events.slice(-2000);
 
-  // ---- RULES PRIORITY ----
+ // ---- RULES PRIORITY ----
+
+  // RULE: maps request -> selalu balas link maps saja
   if (/alamat|lokasi|maps|map|di mana|dimana/i.test(body)) {
     await saveDB(db);
     return replyTwiML(res, `Untuk lokasi, silakan buka: ${MAPS_LINK}`);
   }
 
+  // RULE: location received (share lokasi / maps link / coords)
   if (hasLoc) {
+    // kalau user share lokasi, anggap ini urgent (towing/evakuasi possible)
+    if (ticket.type !== "TOWING") updateTicket(ticket, { type: "TOWING" });
+
     await saveDB(db);
     return replyTwiML(
       res,
@@ -1105,52 +1111,104 @@ async function webhookHandler(req, res) {
     );
   }
 
-  if (acMode || arena.lane === "AC") {
-    await saveDB(db);
-    return replyTwiML(res, acInstruction(ticket, style));
+  // RULE: AC FLOW (STEP 1–2–3) — biar gak “aneh” & gak muter-muter
+  if (acMode || arena.lane === "AC" || ticket.type === "AC") {
+
+    // kunci type AC
+    if (ticket.type !== "AC") updateTicket(ticket, { type: "AC" });
+
+    const t = String(body || "").toLowerCase();
+
+    // STEP 1 – kumpulkan info dasar (1x tanya ringkas)
+    if (Number(ticket.stage || 0) < 1) {
+      updateTicket(ticket, { stage: 1 });
+      await saveDB(db);
+      return replyTwiML(
+        res,
+        [
+          "Siap Bang, saya fokus *AC* dulu ya (bukan matic).",
+          "",
+          "1) AC-nya *tidak dingin sama sekali* atau *dingin sebentar lalu panas*?",
+          "2) Blower angin *kencang* atau *lemah*?",
+          "",
+          "Biar cepat: kirim *tipe mobil + tahun*.",
+          "",
+          confidenceLine(style),
+          "",
+          signatureShort(),
+        ].join("\n")
+      );
+    }
+
+    // STEP 2 – kalau sudah ada info dasar, arahkan tindakan + booking
+    const hasBasicACInfo =
+      hasVehicleInfo(body) ||
+      /\b(19\d{2}|20\d{2})\b/.test(t) ||
+      /tidak dingin|dingin sebentar|panas|blower|kompresor|freon|extra fan|kipas|servis|service/i.test(t);
+
+    if (Number(ticket.stage || 0) === 1 && hasBasicACInfo) {
+      updateTicket(ticket, { stage: 2 });
+      await saveDB(db);
+      return replyTwiML(
+        res,
+        [
+          "Baik Bang, saya tangkap ya.",
+          "Gejala *dingin sebentar lalu panas + kompresor kasar* paling sering terkait:",
+          "• tekanan freon drop / ada kebocoran ringan",
+          "• extra fan lemah (kondensor panas)",
+          "• kompresor mulai berat / magnetic clutch bermasalah",
+          "",
+          "Biar tidak merembet, paling aman kita cek langsung (singkat) di bengkel.",
+          "",
+          "Ketik *A* untuk booking ya Bang.",
+          "",
+          confidenceLine(style),
+          "",
+          signatureShort(),
+        ].join("\n")
+      );
+    }
+
+    // STEP 3 – closing / booking
+    if (Number(ticket.stage || 0) >= 2) {
+      await saveDB(db);
+      return replyTwiML(
+        res,
+        [
+          "Siap Bang ✅",
+          "Kalau mau langsung beres tanpa coba-coba, kirim *hari & jam datang* ya.",
+          "Admin siapkan slot.",
+          "",
+          confidenceLine(style),
+          "",
+          signatureShort(),
+        ].join("\n")
+      );
+    }
   }
 
+  // RULE: NO_START
   if (noStart || arena.lane === "NO_START") {
+    if (ticket.type !== "NO_START") updateTicket(ticket, { type: "NO_START" });
     await saveDB(db);
     return replyTwiML(res, noStartInstruction(ticket, style));
   }
 
+  // RULE: towing/cant drive (URGENT)
   if (cmdTowing || cantDrive || arena.lane === "URGENT") {
+    if (ticket.type !== "TOWING") updateTicket(ticket, { type: "TOWING" });
     await saveDB(db);
     return replyTwiML(res, towingInstruction(ticket, style));
   }
 
+  // RULE: jadwal / booking
   if (cmdJadwal || arena.lane === "BOOKING") {
+    if (ticket.type !== "JADWAL") updateTicket(ticket, { type: "JADWAL" });
     await saveDB(db);
     return replyTwiML(res, jadwalInstruction(ticket, style));
   }
 
-  // ---- DEFAULT: AI reply ----
-  const ai = await aiReply({ userText: body, ticket, style, stage, cantDrive, priceOnly });
-
-  let replyText;
-  if (ai) {
-    replyText = [ai.trim(), "", confidenceLine(style), "", signatureShort()].join("\n");
-  } else {
-    const triageQ =
-      arena.lane === "TECHNICAL"
-        ? "Boleh info mobil & tahunnya + gejala transmisi yang paling terasa (singkat)?"
-        : "Boleh info mobil & tahun + keluhan utama (singkat) biar saya arahkan langkahnya?";
-
-    replyText = [
-      "Oke Bang, saya bantu arahkan dulu ya.",
-      triageQ,
-      priceOnly ? "Untuk biaya tergantung penyebabnya—biar akurat, kita pastikan diagnosanya dulu." : "",
-      confidenceLine(style),
-      "",
-      signatureShort(),
-    ].filter(Boolean).join("\n");
-  }
-
-  ticket.lastBotAtMs = nowMs();
-  await saveDB(db);
-  return replyTwiML(res, replyText);
-}
+  // ---- DEFAULT: AI reply ---- 
 
 // ================= ROUTES =================
 app.post("/twilio/webhook", async (req, res) => {
