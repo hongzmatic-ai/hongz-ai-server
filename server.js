@@ -1038,11 +1038,6 @@ if (ticket.type === "SLIP") {
     hasVehicle,
     buyingSignal: !!buying,
   });
-const greet = greetWord(
-  db.customers[customerId],
-  style,
-  body
-);
 const memorySnippet =
 buildMemorySnippet(db.customers[customerId], ticket);
 
