@@ -246,7 +246,7 @@ function towingSignatureOnce(ticket) {
 }
 
 // ================= DETECTORS =================
-function detectSlipIntent(body) {
+function detectSlip(body) {
   const t = String(body || "").toLowerCase();
 
   // kata kunci selip / slip (yang sering terjadi di matic)
