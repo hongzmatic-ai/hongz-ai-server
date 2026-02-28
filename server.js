@@ -245,26 +245,21 @@ function towingSignatureOnce(ticket) {
   return "\n\n" + signatureTowing();
 }
 
-// ================= DETECTORS =================
+// ================= DETECTORS (FINAL STABLE) =================
+
+function isGeneralQuestion(body) {
+  const t = String(body || "").toLowerCase().trim();
+  return /^(bang\s+)?(mau\s+tanya|izin\s+tanya|mau\s*nanya|mau\s*konsultasi|tanya|halo|hai|pagi|siang|sore|malam|ass?alam)(\b|$)/i.test(t);
+}
 
 function detectSlip(body) {
   const t = String(body || "").toLowerCase();
 
-  // kata kunci selip / slip (yang sering terjadi di matic)
-  if (/selip|slip|ngelos|loss|gelos|rpm naik tapi tidak jalan/i.test(t)) {
-    // slip ringan: masih bisa jalan pelan
-    if (/masih bisa jalan|bisa jalan pelan|pelan pelan|pelan2|pelan-pelan/i.test(t)) return true;
+  // kata kunci selip/slip
+  if (/selip|slip|ngelos|loss|gelos|rpm naik tapi tidak jalan/i.test(t)) return true;
 
-    // slip berat / ga narik / tarikan hilang
-    if (/selip parah|selip berat|ga narik|gak narik|tidak narik|tarikan hilang/i.test(t)) return true;
-
-    return true;
-  }
-
-  // gear masuk tapi tidak ada tenaga (sering slip/pressure)
-  if (/\b(d|r)\b.*(masuk|nyantol).*(tapi|tp).*(tidak jalan|ga jalan|gak jalan)/i.test(t)) {
-    return true;
-  }
+  // gear D/R masuk tapi tidak jalan
+  if (/\b(d|r)\b.*(masuk|nyantol).*(tapi|tp).*(tidak jalan|ga jalan|gak jalan)/i.test(t)) return true;
 
   return false;
 }
@@ -272,22 +267,34 @@ function detectSlip(body) {
 function detectTowingIntent(body) {
   const t = String(body || "").toLowerCase();
 
-  // kalau slip -> jangan dianggap towing
-  if (detectSlip(body)) return false;
+  // kalau slip -> jangan dianggap towing (kecuali user minta derek jelas)
+  if (detectSlip(body) && !/towing|derek|evakuasi|ditarik|jemput/i.test(t)) return false;
 
-  // explicit towing / derek / evakuasi (ini towing beneran)
-  if (/towing|evakuasi|derek|ditarik|jemput|mobil mogok di jalan/i.test(t)) return true;
+  // towing/derek eksplisit
+  if (/towing|evakuasi|derek|ditarik|jemput|angkut/i.test(t)) return true;
 
-  // benar-benar tidak bisa jalan sama sekali
-  if (/tidak bisa jalan sama sekali|tidak bisa bergerak sama sekali|stuck total|macet total/i.test(t)) return true;
+  // benar2 tidak bisa bergerak sama sekali
+  if (/tidak bisa jalan sama sekali|tidak bisa bergerak sama sekali|stuck total|macet total|mogok total/i.test(t)) return true;
 
   return false;
+}
+
+function detectCantDrive(body) {
+  const t = String(body || "").toLowerCase();
+
+  // Slip tidak otomatis "cantDrive" kecuali user bilang benar2 tidak jalan sama sekali
+  if (detectSlip(body)) {
+    return /tidak jalan sama sekali|gak jalan sama sekali|ga jalan sama sekali|tidak bisa jalan sama sekali|tidak bisa bergerak sama sekali|stuck total|macet total/i.test(t);
+  }
+
+  // umum: tidak bisa jalan / stuck / mogok
+  return /tidak bisa jalan|ga bisa jalan|gak bisa jalan|tidak bisa bergerak|stuck|mogok|macet total|d masuk tapi tidak jalan|r masuk tapi tidak jalan/i.test(t);
 }
 
 function detectStyle(body) {
   const raw = String(body || "");
   const t = raw.toLowerCase();
-  if (/darurat|tolong|cepat|mogok|bahaya|stuck/i.test(t)) return "urgent";
+  if (/darurat|tolong|cepat|mogok|bahaya|stuck|macet total/i.test(t)) return "urgent";
   const hasEmoji = /[\u{1F300}-\u{1FAFF}]/u.test(raw);
   if (t.length < 20 || hasEmoji) return "casual";
   return "neutral";
@@ -303,18 +310,6 @@ function detectNoStart(body) {
   return /tidak bisa hidup|gak bisa hidup|ga bisa hidup|tidak bisa starter|gak bisa starter|ga bisa starter|starter|aki|accu|lampu redup/i.test(t);
 }
 
-function detectCantDrive(body) {
-  const t = String(body || "").toLowerCase();
-
-  // NOTE: cantDrive = indikasi darurat / tidak bisa jalan
-  // Slip tidak otomatis cantDrive (biar tidak masuk towing), kecuali user bilang benar2 tidak jalan
-  if (detectSlip(body)) {
-    return /tidak jalan sama sekali|gak jalan sama sekali|ga jalan sama sekali|tidak bisa jalan sama sekali|tidak bisa bergerak sama sekali/i.test(t);
-  }
-
-  return /tidak bisa jalan|ga bisa jalan|gak bisa jalan|tidak bisa bergerak|stuck|macet total|d masuk tapi tidak jalan|r masuk tapi tidak jalan|towing|evakuasi/i.test(t);
-}
-
 function detectPriceOnly(body) {
   const t = String(body || "").toLowerCase();
   return /berapa|biaya|harga|kisaran|range|murah|diskon|nego|budget|ongkos/i.test(t);
@@ -322,7 +317,7 @@ function detectPriceOnly(body) {
 
 function detectBuyingSignal(body) {
   const t = String(body || "").toLowerCase();
-  return /jadwal|booking|bisa masuk|hari ini|besok bisa|jam berapa|mau datang|fix datang|oke saya ke sana|alamat|lokasi|maps/i.test(t);
+  return /jadwal|booking|bisa masuk|hari ini|besok|lusa|jam berapa|mau datang|fix datang|oke saya ke sana|alamat|lokasi|maps|share lokasi/i.test(t);
 }
 
 function hasVehicleInfo(body) {
