@@ -789,19 +789,42 @@ const greet = greetWord(
   const priceOnly = detectPriceOnly(body);
   const buying = detectBuyingSignal(body);
 
-  // type sticky (priority order)
-if (slipMode)
+// type routing (FINAL STABLE VERSION)
+
+// 1️⃣ kalau cuma mau tanya umum → reset ke GENERAL
+if (isGeneralQuestion(body)) {
+  ticket.type = "GENERAL";
+}
+
+// 2️⃣ slip harus benar-benar ada kata slip
+else if (slipMode) {
   ticket.type = "SLIP";
-else if (cmdTowing || cantDrive || hasLoc)
+}
+
+// 3️⃣ towing / tidak bisa jalan / share lokasi
+else if (cmdTowing || cantDrive || hasLoc) {
   ticket.type = "TOWING";
-else if (cmdJadwal || buying)
+}
+
+// 4️⃣ jadwal / closing signal
+else if (cmdJadwal || buying) {
   ticket.type = "JADWAL";
-else if (acMode)
+}
+
+// 5️⃣ ac
+else if (acMode) {
   ticket.type = "AC";
-else if (noStart)
+}
+
+// 6️⃣ no start
+else if (noStart) {
   ticket.type = "NO_START";
-else
-  ticket.type = ticket.type || "GENERAL";
+}
+
+// 7️⃣ default fallback
+else {
+  ticket.type = "GENERAL";
+}
 
   const score = leadScore({
   body,
