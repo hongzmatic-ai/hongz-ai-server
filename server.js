@@ -246,18 +246,37 @@ function towingSignatureOnce(ticket) {
 }
 
 // ================= DETECTORS =================
+function detectSlipIntent(body) {
+  const t = String(body || "").toLowerCase();
+
+  // kata kunci selip / slip (yang sering terjadi di matic)
+  if (/selip|slip|ngelos|loss|gelos|rpm naik tapi tidak jalan/i.test(t)) {
+    // kalau user bilang "masih bisa jalan" => BUKAN towing
+    if (/masih bisa jalan|bisa jalan pelan|pelan pelan|pelan2|pelan-pelan/i.test(t)) return true;
+
+    // kalau slip parah / ga narik tapi tidak minta derek => tetap slip flow dulu
+    if (/selip parah|selip berat|ga narik|gak narik|tidak narik|tarikan hilang/i.test(t)) return true;
+
+    return true;
+  }
+  // gear masuk tapi tidak ada tenaga (sering slip/pressure)
+  if (/\b(d|r)\b.*(masuk|nyantol).*(tapi|tp).*(tidak jalan|ga jalan|gak jalan)/i.test(t)) {
+    return true;
+  }
+
+  return false;
+}
 function detectTowingIntent(body) {
   const t = String(body || "").toLowerCase();
 
-  // explicit towing / derek
-  if (/towing|evakuasi|derek|ditarik|mobil mogok di jalan|jemput/i.test(t)) {
-    return true;
-  }
+  // explicit towing / derek / evakuasi (ini baru towing beneran)
+  if (/towing|evakuasi|derek|ditarik|jemput|mobil mogok di jalan/i.test(t)) return true;
 
   // benar-benar tidak bisa jalan sama sekali
-  if (/tidak bisa jalan sama sekali|tidak bisa bergerak sama sekali|stuck total|macet total/i.test(t)) {
-    return true;
-  }
+  if (/tidak bisa jalan sama sekali|tidak bisa bergerak sama sekali|stuck total|macet total/i.test(t)) return true;
+
+  // kalau user bilang "selip" -> jangan dianggap towing
+  if (detectSlipIntent(body)) return false;
 
   return false;
 }
@@ -269,7 +288,6 @@ function detectStyle(body) {
   if (t.length < 20 || hasEmoji) return "casual";
   return "neutral";
 }
-
 function detectAC(body) {
   const t = String(body || "").toLowerCase();
   return /\bac\b|freon|kompresor|blower|evaporator|kondensor|tidak dingin|dingin sebentar|panas lagi|extra fan|kipas/i.test(t);
@@ -743,24 +761,33 @@ try {
   const cmdJadwal = isCommand(body, "JADWAL");
   const acMode = detectAC(body);
   const noStart = detectNoStart(body);
-  const cantDrive = detectCantDrive(body);
+  const cantDrive = detectCantDrive(body);       
+  const slipMode = detectSlip(body);
   const priceOnly = detectPriceOnly(body);
   const buying = detectBuyingSignal(body);
 
-  // type sticky
-  if (cmdTowing || cantDrive || hasLoc) ticket.type = "TOWING";
-  else if (cmdJadwal || buying) ticket.type = "JADWAL";
-  else if (acMode) ticket.type = "AC";
-  else if (noStart) ticket.type = "NO_START";
-  else ticket.type = ticket.type || "GENERAL";
+  // type sticky (priority order)
+if (slipMode)
+  ticket.type = "SLIP";
+else if (cmdTowing || cantDrive || hasLoc)
+  ticket.type = "TOWING";
+else if (cmdJadwal || buying)
+  ticket.type = "JADWAL";
+else if (acMode)
+  ticket.type = "AC";
+else if (noStart)
+  ticket.type = "NO_START";
+else
+  ticket.type = ticket.type || "GENERAL";
 
   const score = leadScore({
-    body,
-    hasLoc,
-    cantDrive,
-    isJadwal: (ticket.type === "JADWAL"),
-    isTowing: (ticket.type === "TOWING"),
-  });
+  body,
+  hasLoc,
+  cantDrive,
+  isJadwal: (ticket.type === "JADWAL"),
+  isTowing: (ticket.type === "TOWING"),
+  isSlip: (ticket.type === "SLIP"),
+});
 
   updateTicket(ticket, {
     score,
@@ -856,6 +883,27 @@ if (ticket.type === "TOWING") {
     saveDBFile(db); // simpan setelah flag _towingSigSent di-set
     return replyTwiML(res, msg);
   }
+}
+
+// 3B) SLIP FLOW (lebih manusia & nyambung)
+if (ticket.type === "SLIP") {
+  saveDBFile(db);
+  return replyTwiML(
+    res,
+    [
+      greet, // sudah ikut greetWord()
+      "Kalau *selip* di matic, saya perlu pastikan dulu ini selip ringan atau sudah mulai berat.",
+      "",
+      "1) Selipnya terjadi saat *D* jalan, atau saat pindah gigi (1-2/2-3)?",
+      "2) RPM naik tapi mobil *masih maju pelan* atau *sama sekali tidak narik*?",
+      "",
+      "Biar cepat: kirim *tipe mobil + tahun* + sejak kapan gejala muncul.",
+      "",
+      confidenceLine(style),
+      "",
+      signatureShort(),
+    ].join("\n")
+  );
 }
   // 4) JADWAL / booking
   if (ticket.type === "JADWAL") {
