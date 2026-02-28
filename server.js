@@ -752,6 +752,12 @@ try {
   updatePreferredGreeting(db, db.customers[customerId], body, customerId);
 } catch (_) {}
 
+const greet = greetWord(
+  db.customers[customerId],
+  style,
+  body
+);
+
   // ticket
   const ticket = getOrCreateTicket(db, customerId, from);
   if (location?.mapsUrl) ticket.locationUrl = location.mapsUrl;
