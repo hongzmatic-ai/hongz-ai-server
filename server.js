@@ -349,6 +349,33 @@ function generalPrompt(style) {
   return "Siap Bang 🙂 Boleh info tipe mobil + tahun + keluhan utamanya apa ya?";
 }
 
+function acPromptElite(style) {
+  if (style === "urgent") {
+    return (
+      "Siap Bang ✅\n" +
+      "AC tidak dingin bisa karena freon bocor/kurang, kompresor lemah, extra fan mati, atau evaporator kotor.\n\n" +
+      "Jawab singkat ya:\n" +
+      "1) Dingin hilang total atau kurang dingin?\n" +
+      "2) Kalau gas, RPM naik terasa berat?\n" +
+      "3) Terakhir servis AC kapan?\n\n" +
+      "Kalau darurat di jalan, share lokasi sekarang 🙏"
+    );
+  }
+
+  return (
+    "Siap Bang ✅\n" +
+    "AC tidak dingin biasanya karena:\n" +
+    "• Freon kurang / bocor\n" +
+    "• Kompresor lemah\n" +
+    "• Extra fan / kipas mati\n" +
+    "• Evaporator / filter kabin kotor\n\n" +
+    "Boleh info:\n" +
+    "– Dingin hilang total atau cuma kurang dingin?\n" +
+    "– Terakhir servis AC kapan?\n\n" +
+    "Kalau mau langsung beres, kirim hari & jam datang ya."
+  );
+}
+
 // ================= OTHER DETECTORS =================
 
 function detectAC(body) {
