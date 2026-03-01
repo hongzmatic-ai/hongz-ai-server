@@ -923,9 +923,7 @@ else if (cmdTowing || cantDrive || hasLoc) {
   ticket.type = "TOWING";
 }
 
-// 4) AC (ELITE) - anti double (kalau sudah AC, jangan ulang edukasi panjang)
-else if (acMode) {
-
+// 4) AC (ELITE) - anti double (kalau sudah AC, 
   // kalau sudah pernah masuk AC, jangan kirim edukasi panjang lagi
   if (ticket.type === "AC") {
     saveDBFile(db);
