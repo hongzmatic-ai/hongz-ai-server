@@ -147,7 +147,7 @@ function acBookingCloseText(style) {
   const head = style === "urgent" ? "Siap Bang ✅" : "Siap Bang ✅ Bisa.";
   const softLine = style === "urgent"
     ? ""
-    : "Besok masih tersedia waktu servis,\nbiar tidak bentrok antrian saya bantu amankan jadwalnya ya.";
+    : "Besok masih tersedia waktu servis,\nsupaya tidak bentrok antrian saya bantu amankan jadwalnya ya.";
 
   return (
     head + "\n\n" +
