@@ -279,6 +279,13 @@ function detectTowingIntent(body) {
   return false;
 }
 
+function generalPrompt(style) {
+  if (style === "urgent") {
+    return "Siap Bang. Mohon tulis keluhannya singkat ya + share lokasi kalau darurat 🙏";
+  }
+  return "Siap Bang 🙂 Boleh info tipe mobil + tahun + keluhan utamanya apa ya?";
+}
+
 function detectCantDrive(body) {
   const t = String(body || "").toLowerCase();
 
