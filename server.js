@@ -1030,7 +1030,12 @@ else {
   ticket.type = "GENERAL";
 }
 
-  const score = leadScore({
+// 🔥 PRIORITY BOOST AC (include confirmed)
+if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
+  ticket.priority = "HIGH";
+}
+
+const score = leadScore({
   body,
   hasLoc,
   cantDrive,
