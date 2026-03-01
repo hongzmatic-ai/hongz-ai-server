@@ -913,32 +913,33 @@ if (isGeneralQuestion(body)) {
   return replyTwiML(res, generalPrompt(style));
 }
 
-// 2️⃣ slip harus benar-benar ada kata slip
+// 2 slip harus benar-benar ada kata slip
 else if (slipMode) {
   ticket.type = "SLIP";
 }
 
-// 3️⃣ towing / tidak bisa jalan / share lokasi
+// 3 towing / tidak bisa jalan / share lokasi
 else if (cmdTowing || cantDrive || hasLoc) {
   ticket.type = "TOWING";
 }
 
-// 4️⃣ jadwal / closing signal
+// 4 AC (ELITE) — prioritas di atas JADWAL
+else if (acMode) {
+  saveDBFile(db);
+  return replyTwiML(res, acPromptElite(style));
+}
+
+// 5 jadwal / closing signal
 else if (cmdJadwal || buying) {
   ticket.type = "JADWAL";
 }
 
-// 5️⃣ ac
-else if (acMode) {
-  ticket.type = "AC";
-}
-
-// 6️⃣ no start
+// 6 no_start
 else if (noStart) {
   ticket.type = "NO_START";
 }
 
-// 7️⃣ default fallback
+// 7 default fallback
 else {
   ticket.type = "GENERAL";
 }
