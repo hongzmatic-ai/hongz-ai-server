@@ -247,31 +247,33 @@ function towingSignatureOnce(ticket) {
 
 // ================= DETECTORS (ELITE FINAL CLEAN) =================
 
-
 // ================= BASIC GREETING / ASK =================
 
 function isGreetingOnly(body) {
   const t = String(body || "").toLowerCase().trim();
-  return /^(halo|hai|pagi|siang|sore|malam|ass?alamualaikum)(\s+bang)?\s*$/i.test(t);
+
+  // dukung variasi salam + tambahan wr wb + "bang"
+  return /^(halo|hai|pagi|siang|sore|malam|ass?alamualaikum)(\s+(wr\.?\s*wb\.?)?)?(\s+bang)?\s*$/i.test(t);
 }
 
 function isAskingIntent(body) {
   const t = String(body || "").toLowerCase().trim();
-  return /^(bang\s+)?(mau\s+tanya|izin\s+tanya|mau\s+nanya|mau\s+konsultasi|tanya)\b/i.test(t);
+
+  // pastikan hanya intent tanya, bukan kalimat panjang yang beda konteks
+  return /^(bang\s+)?(mau\s+tanya|izin\s+tanya|mau\s+nanya|mau\s+konsultasi|tanya)(\b|$)/i.test(t);
 }
 
 function isGeneralQuestion(body) {
   return isGreetingOnly(body) || isAskingIntent(body);
 }
 
-
 // ================= SLIP DETECTION =================
 
 function detectSlip(body) {
   const t = String(body || "").toLowerCase();
 
-  // kata kunci selip/slip
-  if (/selip|slip|ngelos|loss|gelos|rpm naik tapi tidak jalan/i.test(t)) {
+  // kata kunci selip/slip (loss pakai boundary)
+  if (/\b(selip|slip|ngelos|gelos)\b|(\brpm\b.*\bnaik\b.*\b(tidak jalan|ga jalan|gak jalan)\b)|\b(loss)\b/i.test(t)) {
     return true;
   }
 
@@ -283,19 +285,18 @@ function detectSlip(body) {
   return false;
 }
 
-
 // ================= TOWING =================
 
 function detectTowingIntent(body) {
   const t = String(body || "").toLowerCase();
 
   // kalau slip -> jangan dianggap towing (kecuali user minta derek jelas)
-  if (detectSlip(body) && !/towing|derek|evakuasi|ditarik|jemput|angkut/i.test(t)) {
+  if (detectSlip(body) && !/(towing|derek|evakuasi|ditarik|jemput|angkut)/i.test(t)) {
     return false;
   }
 
   // towing eksplisit
-  if (/towing|evakuasi|derek|ditarik|jemput|angkut/i.test(t)) {
+  if (/(towing|evakuasi|derek|ditarik|jemput|angkut)/i.test(t)) {
     return true;
   }
 
@@ -306,7 +307,6 @@ function detectTowingIntent(body) {
 
   return false;
 }
-
 
 // ================= CANT DRIVE =================
 
@@ -320,7 +320,6 @@ function detectCantDrive(body) {
 
   return /tidak bisa jalan|ga bisa jalan|gak bisa jalan|tidak bisa bergerak|stuck|mogok|macet total|d masuk tapi tidak jalan|r masuk tapi tidak jalan/i.test(t);
 }
-
 
 // ================= STYLE =================
 
@@ -339,6 +338,44 @@ function detectStyle(body) {
   }
 
   return "neutral";
+}
+
+// ================= GENERAL PROMPT =================
+
+function generalPrompt(style) {
+  if (style === "urgent") {
+    return "Siap Bang. Mohon tulis keluhannya singkat ya + share lokasi kalau darurat 🙏";
+  }
+  return "Siap Bang 🙂 Boleh info tipe mobil + tahun + keluhan utamanya apa ya?";
+}
+
+// ================= OTHER DETECTORS =================
+
+function detectAC(body) {
+  const t = String(body || "").toLowerCase();
+  return /\bac\b|freon|kompresor|blower|evaporator|kondensor|tidak dingin|dingin sebentar|panas lagi|extra fan|kipas/i.test(t);
+}
+
+function detectNoStart(body) {
+  const t = String(body || "").toLowerCase();
+  return /tidak bisa hidup|gak bisa hidup|ga bisa hidup|tidak bisa starter|gak bisa starter|ga bisa starter|starter|aki|accu|lampu redup/i.test(t);
+}
+
+function detectPriceOnly(body) {
+  const t = String(body || "").toLowerCase();
+  return /berapa|biaya|harga|kisaran|range|murah|diskon|nego|budget|ongkos/i.test(t);
+}
+
+function detectBuyingSignal(body) {
+  const t = String(body || "").toLowerCase();
+  return /jadwal|booking|bisa masuk|hari ini|besok|lusa|jam berapa|mau datang|fix datang|oke saya ke sana|alamat|lokasi|maps|share lokasi/i.test(t);
+}
+
+function hasVehicleInfo(body) {
+  const t = String(body || "").toLowerCase();
+  const hasYear = /\b(19\d{2}|20\d{2})\b/.test(t);
+  const hasBrand = /toyota|honda|nissan|mitsubishi|suzuki|daihatsu|mazda|hyundai|kia|wuling|bmw|mercedes|audi|lexus/i.test(t);
+  return hasYear || hasBrand;
 }
 
 
@@ -382,6 +419,7 @@ function hasVehicleInfo(body) {
 
   return hasYear || hasBrand;
 }
+
 
 // ================= LOCATION PARSER =================
 function extractMapsLink(reqBody) {
