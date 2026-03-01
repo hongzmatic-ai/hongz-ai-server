@@ -574,6 +574,108 @@ async function safeSendWhatsApp(to, text) {
   }
 }
 
+// ============================
+// ✅ FOLLOW-UP ELIGIBILITY HELPER (ELITE)
+// ============================
+function isEligibleForFollowUp(t, nowMsValue, minutesIdle) {
+  if (!t) return false;
+
+  // wajib punya nomor tujuan
+  if (!t.from) return false;
+
+  // jangan follow up kalau sudah CLOSED
+  if (t.type === "CLOSED") return false;
+
+  // jangan follow up kalau sudah confirmed/jadwal (anggap closing)
+  if (t.type === "AC_CONFIRMED") return false;
+
+  // jangan follow up kalau baru saja masuk (anti spam)
+  if (minutesIdle < 60) return false;
+
+  // optional: kalau ada flag do-not-follow
+  if (t.noFollowUp) return false;
+
+  return true;
+}
+
+// ============================
+// ✅ PICK FOLLOW-UP STAGE (60m / 6h / 24h)
+// return 0 jika belum waktunya
+// ============================
+function pickFollowUpStage(t, minutesIdle) {
+  // stage 1: 60 menit
+  if (minutesIdle >= 60 && !t.fu1Sent) return 1;
+
+  // stage 2: 6 jam
+  if (minutesIdle >= 360 && !t.fu2Sent) return 2;
+
+  // stage 3: 24 jam
+  if (minutesIdle >= 1440 && !t.fu3Sent) return 3;
+
+  return 0;
+}
+
+// ============================
+// ✅ SIMPLE SERVICE LABEL (biar semua jenis kerja masuk)
+// ============================
+function serviceLabel(ticketType) {
+  const t = String(ticketType || "").toUpperCase();
+
+  if (t.includes("AC")) return "AC Mobil";
+  if (t.includes("TOWING")) return "Towing / Darurat";
+  if (t.includes("SLIP")) return "Transmisi (Slip)";
+  if (t.includes("NO_START")) return "Mesin Tidak Mau Hidup";
+  if (t.includes("JADWAL")) return "Booking / Jadwal";
+
+  // default: anggap transmisi/general bengkel
+  return "Bengkel (Transmisi/Engine/Suspensi/Electrical)";
+}
+
+// ============================
+// ✅ FOLLOW-UP MESSAGE GENERATOR (per stage + per type + score)
+// ============================
+function buildFollowUpMessage(t, stage) {
+  const label = serviceLabel(t.type);
+  const car = t.car ? `\nMobil: ${t.car}` : "";
+  const score = Number(t.score || 0);
+
+  // Nada makin tegas kalau score tinggi
+  const urgency =
+    score >= 80 ? "Biar cepat kita amankan slot hari ini ya 🙏" :
+    score >= 60 ? "Kalau mau lanjut, kita bantu atur jadwalnya ya 🙏" :
+                  "Kalau masih butuh info, tanya aja ya 🙏";
+
+  if (stage === 1) {
+    return (
+      "Halo Bang 👋\n\n" +
+      `Kemarin sempat konsultasi soal *${label}*.` + car + "\n" +
+      "Sekarang masih mau kita bantu lanjut?\n\n" +
+      urgency + "\n" +
+      "Balas: *LANJUT* atau kirim *Mobil + Tahun + Keluhan* ya."
+    );
+  }
+
+  if (stage === 2) {
+    return (
+      "Halo Bang 🙏\n\n" +
+      `Follow up singkat untuk *${label}* ya.` + car + "\n" +
+      "Supaya tidak bolak-balik, jawab 2 hal ini:\n" +
+      "1) Keluhannya sekarang bagaimana?\n" +
+      "2) Mobil & tahun berapa?\n\n" +
+      "Nanti kami arahkan langkah paling aman dulu."
+    );
+  }
+
+  // stage 3
+  return (
+    "Halo Bang 👑\n\n" +
+    `Terakhir follow up untuk *${label}*.` + car + "\n" +
+    "Kalau masih ingin beres, kami bisa bantu booking waktu yang kosong.\n\n" +
+    "Balas: *JADWAL* + hari (misal: besok/senin) + jam kira-kira.\n" +
+    "Kalau tidak jadi, cukup balas: *STOP* 🙏"
+  );
+}
+
 async function radarPing(db, payload) {
   if (!RADAR_ON) return;
   if (!MONITOR_WHATSAPP_TO) return;
