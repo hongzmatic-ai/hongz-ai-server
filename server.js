@@ -1030,32 +1030,6 @@ else {
   ticket.type = "GENERAL";
 }
 
-// 🔥 PRIORITY BOOST AC (include confirmed)
-if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
-  ticket.priority = "HIGH";
-
-  const cooldownKey = `high_${ticket.id}`;
-
-  if (canSendCooldown(db, cooldownKey, 5 * 60 * 1000)) {
-
-    const msg =
-      "🔥 LEAD HIGH AC\n" +
-      "Ticket: " + ticket.id + "\n" +
-      "Type: " + ticket.type + "\n" +
-      "Isi: " + String(body || "").slice(0, 120);
-
-    // kirim ke ADMIN
-    safeSendWhatsApp(WHATSAPP_ADMIN, msg);
-
-    // kirim ke MONITOR / RADAR
-    safeSendWhatsApp(WHATSAPP_MONITOR_ADMIN, msg);
-
-    // tetap kirim radar log (opsional)
-    radarPing(db, {
-      type: "HIGH_LEAD",
-      from,
-      ticketType: ticket.type
-    });
 
 // 🔥 PRIORITY BOOST AC (include confirmed)
 if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
