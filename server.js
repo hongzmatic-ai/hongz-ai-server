@@ -142,6 +142,27 @@ function confidenceLine(style = "neutral") {
   return "✅ Tenang ya Bang, kami bantu sampai jelas langkahnya.";
 }
 
+function acBookingCloseText(style) {
+  const openHour = "09.00–17.00";
+  const head = style === "urgent" ? "Siap Bang ✅" : "Siap Bang ✅ Bisa.";
+  const softLine = style === "urgent"
+    ? ""
+    : "Biar tidak bentrok antrian, saya bantu amankan jadwalnya ya.";
+
+  return (
+    head + "\n\n" +
+    (softLine ? softLine + "\n\n" : "") +
+    "Mohon kirim data berikut:\n" +
+    "1) Nama\n" +
+    "2) Mobil & tahun\n" +
+    "3) Mau datang jam berapa? (kami buka " + openHour + ")\n\n" +
+    "Sekalian biar diagnosa lebih cepat:\n" +
+    "4) Dinginnya hilang total atau cuma kurang dingin?\n" +
+    "5) Terakhir servis AC kapan?\n\n" +
+    "Kalau butuh cepat, langsung voice call Admin: +6281375430728"
+  );
+}
+
 function signatureShort() {
   return [
     `— ${BIZ_NAME}`,
