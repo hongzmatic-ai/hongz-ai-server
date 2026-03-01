@@ -1030,8 +1030,7 @@ else {
   ticket.type = "GENERAL";
 }
 
-
-// 🔥 PRIORITY BOOST AC (include confirmed)
+ // 🔥 PRIORITY BOOST AC (include confirmed)
 if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
 
   ticket.priority = "HIGH";
@@ -1046,17 +1045,15 @@ if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
       "Type: " + ticket.type + "\n" +
       "Isi: " + String(body || "").slice(0, 120);
 
-  safeSendWhatsApp(process.env.WHATSAPP_ADMIN, msg);
-safeSendWhatsApp(process.env.WHATSAPP_RADAR, msg);
+    safeSendWhatsApp(process.env.WHATSAPP_ADMIN, msg);
+    safeSendWhatsApp(process.env.WHATSAPP_RADAR, msg);
 
-
-    // radar log
     radarPing(db, {
       type: "HIGH_LEAD",
       from,
       ticketType: ticket.type
-    });                  
-    }
+    });
+  }
 }
 
     // ==============================
