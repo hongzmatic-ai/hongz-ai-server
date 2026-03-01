@@ -1077,6 +1077,8 @@ if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
 
     // kirim monitor
     safeSendWhatsApp(WHATSAPP_MONITOR_ADMIN, msg);
+)
+)
 
     // radar log
     radarPing(db, {
