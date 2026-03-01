@@ -1030,10 +1030,11 @@ else {
   ticket.type = "GENERAL";
 }
 
- // 🔥 PRIORITY BOOST AC (include confirmed)
+ // 🔥 PRIORITY BOOST + ESCALATION (AC ONLY)
 if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
 
   ticket.priority = "HIGH";
+  saveDBFile(db);
 
   const cooldownKey = `high_${ticket.id}`;
 
@@ -1053,48 +1054,43 @@ if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
       from,
       ticketType: ticket.type
     });
+
+    saveDBFile(db);
   }
-}
 
-    // ==============================
-    // ⏱️ ESCALATION 15 MENIT
-    // ==============================
+  // ⏱ ESCALATION 15 MENIT (HANYA AC)
+  setTimeout(() => {
+    try {
+      const db3 = loadDBFile();
+      const t3 = db3.tickets && db3.tickets[ticket.id];
+      if (!t3) return;
 
-    setTimeout(() => {
-      try {
-        const db3 = loadDBFile();
-        const t3 = db3.tickets && db3.tickets[ticket.id];
-        if (!t3) return;
+      if (t3.priority !== "HIGH") return;
 
-        if (t3.priority !== "HIGH") return;
+      const escKey = `esc_${t3.id}`;
+      if (!canSendCooldown(db3, escKey, 30 * 60 * 1000)) return;
 
-        const escKey = `esc_${t3.id}`;
-        if (!canSendCooldown(db3, escKey, 30 * 60 * 1000)) return;
-
-        const escMsg =
-          "🚨 ESCALATION 15 MENIT\n" +
-          "Ticket: " + t3.id + "\n" +
-          "Type: " + t3.type + "\n" +
-          "Isi: " + String(t3.lastBody || "").slice(0, 160);
+      const escMsg =
+        "🚨 ESCALATION 15 MENIT\n" +
+        "Ticket: " + t3.id + "\n" +
+        "Type: " + t3.type + "\n" +
+        "Isi: " + String(t3.lastBody || "").slice(0, 160);
 
       safeSendWhatsApp(process.env.WHATSAPP_ADMIN, escMsg);
-safeSendWhatsApp(process.env.WHATSAPP_RADAR, escMsg);
+      safeSendWhatsApp(process.env.WHATSAPP_RADAR, escMsg);
 
-        radarPing(db3, {
-          type: "ESCALATE_15M",
-          ticketId: t3.id
-        });
+      radarPing(db3, {
+        type: "ESCALATE_15M",
+        ticketId: t3.id
+      });
 
-        saveDBFile(db3);
+      saveDBFile(db3);
 
-      } catch (e) {
-        console.error("esc15m error:", e);
-      }
-    }, 15 * 60 * 1000);
-
-  }
+    } catch (e) {
+      console.error("esc15m error:", e);
+    }
+  }, 15 * 60 * 1000);
 }
-
 
 const score = leadScore({
   body,
