@@ -1033,6 +1033,18 @@ else {
 // 🔥 PRIORITY BOOST AC (include confirmed)
 if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
   ticket.priority = "HIGH";
+
+  // 🚨 Anti-spam HIGH notify (5 menit)
+  const cooldownKey = `high_${ticket.id}`;
+  if (canSendCooldown(db, cooldownKey, 5 * 60 * 1000)) {
+    radarPing(db, {
+  type: "HIGH_LEAD",
+  from,
+  ticketType: ticket.type,
+  hasLoc,
+  snippet: String(body || "").replace(/\s+/g, " ").slice(0, 80)
+});
+  }
 }
 
 const score = leadScore({
