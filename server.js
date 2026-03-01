@@ -957,6 +957,20 @@ else if (cmdTowing || cantDrive || hasLoc) {
   ticket.type = "TOWING";
 }
 
+// 🔥 0) HARD CONFIRM AC
+else if (body.includes("siap besok")) {
+  ticket.type = "AC_CONFIRMED";
+  saveDBFile(db);
+
+  return replyTwiML(
+    res,
+    "Siap Bang ✅ Kedatangan BESOK kami konfirmasi.\n\n" +
+    "Unit langsung masuk pengecekan saat tiba.\n" +
+    "Mohon datang sesuai jam yang dikirim ya supaya tidak menunggu.\n\n" +
+    "Sampai ketemu di Hongz 👑"
+  );
+}
+
 // 4) AC (ELITE)
 else if (acMode) {
 
