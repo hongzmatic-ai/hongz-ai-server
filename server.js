@@ -944,8 +944,17 @@ else if (cmdTowing || cantDrive || hasLoc) {
   ticket.type = "TOWING";
 }
 
-// 4) AC (ELITE) - anti double (kalau sudah AC, 
-  // kalau sudah pernah masuk AC, jangan kirim edukasi panjang lagi
+// 4) AC (ELITE)
+else if (acMode) {
+
+  // 🔥 Kalau user AC + tanya booking → langsung closing
+  if (buying || cmdJadwal) {
+    ticket.type = "AC";
+    saveDBFile(db);
+    return replyTwiML(res, acBookingCloseText(style));
+  }
+
+  // 🔁 Kalau sudah pernah masuk AC, jangan ulang edukasi panjang
   if (ticket.type === "AC") {
     saveDBFile(db);
     return replyTwiML(
@@ -957,14 +966,14 @@ else if (cmdTowing || cantDrive || hasLoc) {
     );
   }
 
-  // pertama kali masuk AC
+  // 🟢 Pertama kali masuk AC
   ticket.type = "AC";
   saveDBFile(db);
   return replyTwiML(res, acPromptElite(style));
 }
 
-// 5) Jadwal / closing signal
-else if (cmdJadwal || buying) {
+// 5) Jadwal / closing signal (khusus NON-AC)
+else if ((cmdJadwal || buying) && !acMode) {
   ticket.type = "JADWAL";
 }
 
