@@ -1561,13 +1561,12 @@ app.get("/", (_req, res) => {
   return res.status(200).send(ok);
 });
 
-// ======================================
-// 🔁 CRON FOLLOW UP ENGINE
-// ======================================
-
+// ==============================
+// 🔁 CRON FOLLOW UP ENGINE (ELITE)
+// ==============================
 app.get("/cron/followup", async (req, res) => {
   try {
-
+    // ✅ keamanan: pakai key query
     if (req.query.key !== "hongzsecure287228") {
       return res.status(403).send("Forbidden");
     }
@@ -1578,40 +1577,53 @@ app.get("/cron/followup", async (req, res) => {
     let triggered = 0;
 
     const tickets = db.tickets || {};
-
-for (const id in tickets) {
-  const t = tickets[id];
-
+    for (const id in tickets) {
+      const t = tickets[id];
       if (!t) continue;
 
-const last = t.lastInboundAtMs;
-if (!last) continue;
+      const last = t.lastInboundAtMs;
+      if (!last) continue;
 
-const minutesIdle = (now - last) / 60000;
+      const minutesIdle = (now - last) / 60000;
 
-      // Follow up 60 menit jika belum closing
-      if (
-        minutesIdle >= 60 &&
-        !t.followupSent &&
-        t.type !== "CLOSED"
-      ) {
+      // ✅ STOP keyword (kalau customer minta stop)
+      if (t.stopFollowUp) continue;
 
-        await safeSendWhatsApp(
-          t.from,
-          "Halo Bang 👋\n\n" +
-          "Kemarin sempat tanya-tanya tapi belum jadi.\n" +
-          "Kalau masih mau lanjut, kabari ya.\n" +
-          "Biar kami bantu atur jadwal 🙏"
-        );
+      // ✅ cek eligible
+      if (!isEligibleForFollowUp(t, now, minutesIdle)) continue;
 
-        t.followupSent = true;
-        triggered++;
+      // ✅ pilih stage follow up
+      const stage = pickFollowUpStage(t, minutesIdle);
+      if (!stage) continue;
+
+      // ✅ cooldown global follow-up per ticket (anti spam)
+      const fuKey = `fu_${t.id}_stage_${stage}`;
+      if (!canSendCooldown(db, fuKey, 60 * 60 * 1000)) { // 1 jam cooldown per stage
+        continue;
       }
+
+      const msg = buildFollowUpMessage(t, stage);
+
+      // ✅ KIRIM ke customer
+      await safeSendWhatsApp(t.from, msg);
+
+      // ✅ TANDAI stage terkirim
+      if (stage === 1) t.fu1Sent = true;
+      if (stage === 2) t.fu2Sent = true;
+      if (stage === 3) t.fu3Sent = true;
+
+      // ✅ log
+      triggered++;
+
+      // ✅ optional: notify admin/radar kalau follow-up ditembak
+      safeSendWhatsApp(
+        process.env.WHATSAPP_ADMIN,
+        `✅ FOLLOWUP SENT\nTicket: ${t.id}\nStage: ${stage}\nType: ${t.type}\nTo: ${t.from}`
+      );
     }
 
     saveDBFile(db);
-
-    res.send("OK - Followup checked: " + triggered);
+    res.status(200).send("OK - Followup checked: " + triggered);
 
   } catch (err) {
     console.error("Cron followup error:", err);
