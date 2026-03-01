@@ -1072,11 +1072,8 @@ if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
       "Type: " + ticket.type + "\n" +
       "Isi: " + String(body || "").slice(0, 120);
 
-    // kirim admin
-    safeSendWhatsApp(WHATSAPP_ADMIN, msg);
-
-    // kirim monitor
-    safeSendWhatsApp(WHATSAPP_MONITOR_ADMIN, msg);
+  safeSendWhatsApp(process.env.WHATSAPP_ADMIN, msg);
+safeSendWhatsApp(process.env.WHATSAPP_RADAR, msg);
 
 
     // radar log
@@ -1109,8 +1106,8 @@ if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
           "Type: " + t3.type + "\n" +
           "Isi: " + String(t3.lastBody || "").slice(0, 160);
 
-        safeSendWhatsApp(WHATSAPP_ADMIN, escMsg);
-        safeSendWhatsApp(WHATSAPP_MONITOR_ADMIN, escMsg);
+      safeSendWhatsApp(process.env.WHATSAPP_ADMIN, escMsg);
+safeSendWhatsApp(process.env.WHATSAPP_RADAR, escMsg);
 
         radarPing(db3, {
           type: "ESCALATE_15M",
