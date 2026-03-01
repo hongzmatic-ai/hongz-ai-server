@@ -1475,12 +1475,17 @@ app.get("/cron/followup", async (req, res) => {
 
     let triggered = 0;
 
-    for (const id in db.tickets) {
-      const t = db.tickets[id];
+    const tickets = db.tickets || {};
 
-      if (!t || !t.lastInboundAtMs) continue;
+for (const id in tickets) {
+  const t = tickets[id];
 
-      const minutesIdle = (now - t.lastInboundAtMs) / 60000;
+      if (!t) continue;
+
+const last = t.lastInboundAtMs;
+if (!last) continue;
+
+const minutesIdle = (now - last) / 60000;
 
       // Follow up 60 menit jika belum closing
       if (
