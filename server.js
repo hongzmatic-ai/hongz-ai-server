@@ -958,16 +958,32 @@ else if (cmdTowing || cantDrive || hasLoc) {
 }
 
 // 🔥 0) HARD CONFIRM AC
-else if (body.includes("siap besok")) {
+else if (String(body || "").toLowerCase().includes("siap besok")) {
   ticket.type = "AC_CONFIRMED";
+  ticket.confirmedAt = Date.now();
   saveDBFile(db);
+
+  // ⏳ AUTO FOLLOW UP 10 MENIT
+  setTimeout(() => {
+    const db2 = loadDBFile();
+    const t = db2.tickets[ticketId];
+
+    if (t && t.type === "AC_CONFIRMED") {
+      sendWhatsAppMessage(
+        from,
+        "Halo Bang 👋\n\n" +
+          "Besok jadi datang sesuai jam yang dikirim ya?\n" +
+          "Kalau ada perubahan waktu kabari supaya teknisi bisa kami atur ulang 🙏"
+      );
+    }
+  }, 10 * 60 * 1000); // 10 menit
 
   return replyTwiML(
     res,
     "Siap Bang ✅ Kedatangan BESOK kami konfirmasi.\n\n" +
-    "Unit langsung masuk pengecekan saat tiba.\n" +
-    "Mohon datang sesuai jam yang dikirim ya supaya tidak menunggu.\n\n" +
-    "Sampai ketemu di Hongz 👑"
+      "Unit langsung masuk pengecekan saat tiba.\n" +
+      "Mohon datang sesuai jam yang dikirim ya supaya tidak menunggu.\n\n" +
+      "Sampai ketemu di Hongz 👑"
   );
 }
 
