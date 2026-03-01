@@ -155,7 +155,7 @@ function acBookingCloseText(style) {
     "Mohon kirim data berikut:\n" +
     "1) Nama\n" +
     "2) Mobil & tahun\n" +
-    "3) Mau datang jam berapa? (kami buka " + openHour + ")\n\n" +
+    "3) Mau datang jam berapa? (kami buka " +openHour + ")\n\n" +
     "Sekalian biar diagnosa lebih cepat:\n" +
     "4) Dinginnya hilang total atau cuma kurang dingin?\n" +
     "5) Terakhir servis AC kapan?\n\n" +
