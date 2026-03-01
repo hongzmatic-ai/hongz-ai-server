@@ -793,9 +793,10 @@ const greet = greetWord(
 
 // type routing (FINAL STABLE VERSION)
 
-// 1️⃣ kalau cuma mau tanya umum → reset ke GENERAL
+// 1️⃣ General question → langsung jawab & stop (ELITE)
 if (isGeneralQuestion(body)) {
-  ticket.type = "GENERAL";
+  saveDBFile(db);
+  return replyTwiML(res, generalPrompt(style));
 }
 
 // 2️⃣ slip harus benar-benar ada kata slip
