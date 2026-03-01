@@ -142,13 +142,31 @@ function confidenceLine(style = "neutral") {
   return "✅ Tenang ya Bang, kami bantu sampai jelas langkahnya.";
 }
 
+/* =========================
+   AC CLOSING 4.0 (ONE BLOCK)
+   Replace:
+   - function acBookingCloseText(style) { ... }
+   - else if (acMode) { ... }
+========================= */
+
+// --- 1) REPLACE function acBookingCloseText(style) ---
 function acBookingCloseText(style) {
   const openHour = "09.00–17.00";
 
-  const head = "Siap Bang ✅ Bisa.";
+  const head =
+    style === "urgent"
+      ? "Siap Bang ✅ Bisa."
+      : "Siap Bang ✅ Bisa.";
 
+  // urgency halus: bukan maksa, tapi ngajak “atur kedatangan”
   const softLine =
-    "Supaya tidak menunggu lama, biasanya kami atur kedatangan per jam agar pengerjaan lebih fokus.";
+    style === "urgent"
+      ? "Supaya besok tidak menunggu lama, biasanya kami atur kedatangan per jam ya."
+      : "Supaya tidak menunggu lama, biasanya kami atur kedatangan per jam ya.";
+
+  // micro-commitment (lock) halus
+  const lockLine =
+    "Kalau sudah cocok, cukup balas: *SIAP BESOK* supaya kami bisa kunci jadwal & siapkan teknisinya.";
 
   return (
     head + "\n\n" +
@@ -156,14 +174,7 @@ function acBookingCloseText(style) {
     "Mohon kirim data berikut:\n" +
     "1) Nama\n" +
     "2) Mobil & tahun\n" +
-    "3) Mau datang jam berapa? (kami buka " + openHour + ")\n\n" +
-    "Sekalian biar diagnosa lebih cepat:\n" +
-    "4) Dinginnya hilang total atau cuma kurang dingin?\n" +
-    "5) Terakhir servis AC kapan?\n\n" +
-    "Jika sudah yakin datang besok, cukup balas: *SIAP BESOK* supaya kami langsung siapkan teknisinya.\n\n" +
-    "Kalau butuh cepat, langsung voice call Admin: +6281375430728"
-  );
-}
+    `3) Mau datang jam berapa? (kami buka ${open
 
 function signatureShort() {
   return [
