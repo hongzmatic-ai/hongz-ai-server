@@ -1034,18 +1034,96 @@ else {
 if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
   ticket.priority = "HIGH";
 
-  // 🚨 Anti-spam HIGH notify (5 menit)
   const cooldownKey = `high_${ticket.id}`;
+
   if (canSendCooldown(db, cooldownKey, 5 * 60 * 1000)) {
+
+    const msg =
+      "🔥 LEAD HIGH AC\n" +
+      "Ticket: " + ticket.id + "\n" +
+      "Type: " + ticket.type + "\n" +
+      "Isi: " + String(body || "").slice(0, 120);
+
+    // kirim ke ADMIN
+    safeSendWhatsApp(WHATSAPP_ADMIN, msg);
+
+    // kirim ke MONITOR / RADAR
+    safeSendWhatsApp(WHATSAPP_MONITOR_ADMIN, msg);
+
+    // tetap kirim radar log (opsional)
     radarPing(db, {
-  type: "HIGH_LEAD",
-  from,
-  ticketType: ticket.type,
-  hasLoc,
-  snippet: String(body || "").replace(/\s+/g, " ").slice(0, 80)
-});
+      type: "HIGH_LEAD",
+      from,
+      ticketType: ticket.type
+    });
+
+// 🔥 PRIORITY BOOST AC (include confirmed)
+if (ticket.type === "AC" || ticket.type === "AC_CONFIRMED") {
+
+  ticket.priority = "HIGH";
+
+  const cooldownKey = `high_${ticket.id}`;
+
+  if (canSendCooldown(db, cooldownKey, 5 * 60 * 1000)) {
+
+    const msg =
+      "🔥 LEAD HIGH AC\n" +
+      "Ticket: " + ticket.id + "\n" +
+      "Type: " + ticket.type + "\n" +
+      "Isi: " + String(body || "").slice(0, 120);
+
+    // kirim admin
+    safeSendWhatsApp(WHATSAPP_ADMIN, msg);
+
+    // kirim monitor
+    safeSendWhatsApp(WHATSAPP_MONITOR_ADMIN, msg);
+
+    // radar log
+    radarPing(db, {
+      type: "HIGH_LEAD",
+      from,
+      ticketType: ticket.type
+    });
+
+    // ==============================
+    // ⏱️ ESCALATION 15 MENIT
+    // ==============================
+
+    setTimeout(() => {
+      try {
+        const db3 = loadDBFile();
+        const t3 = db3.tickets && db3.tickets[ticket.id];
+        if (!t3) return;
+
+        if (t3.priority !== "HIGH") return;
+
+        const escKey = `esc_${t3.id}`;
+        if (!canSendCooldown(db3, escKey, 30 * 60 * 1000)) return;
+
+        const escMsg =
+          "🚨 ESCALATION 15 MENIT\n" +
+          "Ticket: " + t3.id + "\n" +
+          "Type: " + t3.type + "\n" +
+          "Isi: " + String(t3.lastBody || "").slice(0, 160);
+
+        safeSendWhatsApp(WHATSAPP_ADMIN, escMsg);
+        safeSendWhatsApp(WHATSAPP_MONITOR_ADMIN, escMsg);
+
+        radarPing(db3, {
+          type: "ESCALATE_15M",
+          ticketId: t3.id
+        });
+
+        saveDBFile(db3);
+
+      } catch (e) {
+        console.error("esc15m error:", e);
+      }
+    }, 15 * 60 * 1000);
+
   }
 }
+
 
 const score = leadScore({
   body,
