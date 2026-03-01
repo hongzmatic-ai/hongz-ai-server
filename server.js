@@ -905,41 +905,56 @@ const greet = greetWord(
   const priceOnly = detectPriceOnly(body);
   const buying = detectBuyingSignal(body);
 
-// type routing (FINAL STABLE VERSION)
+// ================= TYPE ROUTING (ELITE NUMBERED) =================
 
-// 1️⃣ General question → langsung jawab & stop (ELITE)
+// 1) General question -> jawab singkat & stop
 if (isGeneralQuestion(body)) {
   saveDBFile(db);
   return replyTwiML(res, generalPrompt(style));
 }
 
-// 2 slip harus benar-benar ada kata slip
+// 2) Slip mode
 else if (slipMode) {
   ticket.type = "SLIP";
 }
 
-// 3 towing / tidak bisa jalan / share lokasi
+// 3) Towing / tidak bisa jalan / share lokasi
 else if (cmdTowing || cantDrive || hasLoc) {
   ticket.type = "TOWING";
 }
 
-// 4 AC (ELITE) — prioritas di atas JADWAL
+// 4) AC (ELITE) - anti double (kalau sudah AC, jangan ulang edukasi panjang)
 else if (acMode) {
+
+  // kalau sudah pernah masuk AC, jangan kirim edukasi panjang lagi
+  if (ticket.type === "AC") {
+    saveDBFile(db);
+    return replyTwiML(
+      res,
+      "Siap Bang ✅ Biar cepat, jawab ini ya:\n" +
+      "1) Dinginnya hilang total atau cuma kurang dingin?\n" +
+      "2) Terakhir servis AC kapan?\n" +
+      "3) Mobil apa & tahun berapa?"
+    );
+  }
+
+  // pertama kali masuk AC
+  ticket.type = "AC";
   saveDBFile(db);
   return replyTwiML(res, acPromptElite(style));
 }
 
-// 5 jadwal / closing signal
+// 5) Jadwal / closing signal
 else if (cmdJadwal || buying) {
   ticket.type = "JADWAL";
 }
 
-// 6 no_start
+// 6) No start
 else if (noStart) {
   ticket.type = "NO_START";
 }
 
-// 7 default fallback
+// 7) Default fallback
 else {
   ticket.type = "GENERAL";
 }
