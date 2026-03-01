@@ -1459,6 +1459,59 @@ app.get("/", (_req, res) => {
   return res.status(200).send(ok);
 });
 
+// ======================================
+// 🔁 CRON FOLLOW UP ENGINE
+// ======================================
+
+app.get("/cron/followup", async (req, res) => {
+  try {
+
+    if (req.query.key !== "hongzsecure287228") {
+      return res.status(403).send("Forbidden");
+    }
+
+    const db = loadDBFile();
+    const now = Date.now();
+
+    let triggered = 0;
+
+    for (const id in db.tickets) {
+      const t = db.tickets[id];
+
+      if (!t || !t.lastInboundAtMs) continue;
+
+      const minutesIdle = (now - t.lastInboundAtMs) / 60000;
+
+      // Follow up 60 menit jika belum closing
+      if (
+        minutesIdle >= 60 &&
+        !t.followupSent &&
+        t.type !== "CLOSED"
+      ) {
+
+        await safeSendWhatsApp(
+          t.from,
+          "Halo Bang 👋\n\n" +
+          "Kemarin sempat tanya-tanya tapi belum jadi.\n" +
+          "Kalau masih mau lanjut, kabari ya.\n" +
+          "Biar kami bantu atur jadwal 🙏"
+        );
+
+        t.followupSent = true;
+        triggered++;
+      }
+    }
+
+    saveDBFile(db);
+
+    res.send("OK - Followup checked: " + triggered);
+
+  } catch (err) {
+    console.error("Cron followup error:", err);
+    res.status(500).send("Error");
+  }
+});
+
 // ================= START =================
 app.listen(Number(PORT || 3000), () => {
   console.log("HONGZ AI SERVER v2.1 — START");
