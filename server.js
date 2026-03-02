@@ -1665,6 +1665,8 @@ app.post("/twilio/webhook", async (req, res) => {
   }
 });
 
+app.get("/health", (req, res) => res.status(200).send("OK"));
+
 app.get("/", (_req, res) => {
   const ok = [
     "HONGZ AI SERVER v2.1 — OK",
