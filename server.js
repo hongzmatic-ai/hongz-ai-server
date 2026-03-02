@@ -1166,9 +1166,12 @@ if (isGeneralQuestion(body)) {
   return replyTwiML(res, generalPrompt(style));
 }
 
-// 2) Slip mode
-else if (slipMode) {
+// 2) else if (slipMode) {
+
   ticket.type = "SLIP";
+  saveDBFile(db);
+
+  return replyTwiML(res, slipPromptElite(style));
 }
 
 // 3) Towing / tidak bisa jalan / share lokasi
