@@ -1196,20 +1196,6 @@ const overhaulMode = detectOverhaul(body);
 
 // ================= TYPE ROUTING (ELITE NUMBERED) =================
 
-// 1) General question -> jawab singkat & stop
-if (isGeneralQuestion(body)) {
-  saveDBFile(db);
-  return replyTwiML(res, generalPrompt(style));
-}
-
- else if (slipMode) {
-
-  ticket.type = "SLIP";
-  saveDBFile(db);
-
-  return replyTwiML(res, slipPromptElite(style));
-}
-
 // 1️⃣ General
 if (isGeneralQuestion(body)) {
   saveDBFile(db);
