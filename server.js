@@ -306,10 +306,13 @@ function isGeneralQuestion(body) {
 function detectSlip(body) {
   const t = String(body || "").toLowerCase();
 
-  // kata kunci selip/slip (loss pakai boundary)
-  if (/\b(selip|slip|ngelos|gelos)\b|(\brpm\b.*\bnaik\b.*\b(tidak jalan|ga jalan|gak jalan)\b)|\b(loss)\b/i.test(t)) {
+  if (/\b(selp|slip|ngelos|gelos)\b|(\brpm\b.*\bnaik\b.*\b(tidak jalan|ga jalan|gak jalan)\b)|\b(loss)\b/i.test(t)) {
     return true;
   }
+
+  return false;
+}
+
 
 // 🔒 RATE LIMITER (ELITE)
 const rate = new Map();
@@ -322,9 +325,11 @@ function hitRateLimit(phone, ms = 2000) {
   return false;
 }
 
-function slipPromptElite(style) {
+function isSlipElite(body) {
+  const t = String(body || "").toLowerCase();
 
   // gear D/R masuk tapi tidak jalan
+
   if (/\b(d|r)\b.*(masuk|nyantol).*(tapi|tp).*(tidak jalan|ga jalan|gak jalan)/i.test(t)) {
     return true;
   }
