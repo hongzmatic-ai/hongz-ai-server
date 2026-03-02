@@ -319,6 +319,22 @@ function detectSlip(body) {
   return false;
 }
 
+function slipPromptElite(style) {
+
+  const head = style === "urgent"
+    ? "Baik Bang. Kalau selip jangan dipaksakan dulu ya."
+    : "Baik Bang. Saya pastikan dulu ya.";
+
+  return (
+    head + "\n\n" +
+    "Selip biasanya ada 2 kondisi:\n" +
+    "1) RPM naik tapi mobil masih jalan pelan\n" +
+    "2) Sudah tidak narik sama sekali\n\n" +
+    "Yang Bang alami yang mana?\n\n" +
+    "Info juga mobil & tahun berapa supaya saya arahkan solusi paling tepat."
+  );
+}
+
 // ================= TOWING =================
 
 function detectTowingIntent(body) {
