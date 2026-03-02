@@ -1031,6 +1031,54 @@ const greet = greetWord(
   const ticket = getOrCreateTicket(db, customerId, from);
   if (location?.mapsUrl) ticket.locationUrl = location.mapsUrl;
 
+// ==============================
+// 🛑 STOP / UNSUBSCRIBE SYSTEM
+// ==============================
+const STOP_KEYWORDS = [
+  "stop",
+  "unsubscribe",
+  "tidak mau",
+  "ga mau",
+  "gak mau",
+  "jangan kirim",
+  "jangan chat",
+  "no follow up",
+  "cukup",
+  "sudah cukup",
+  "gak jadi",
+  "tidak jadi"
+];
+
+if (STOP_KEYWORDS.some(k => body.includes(k))) {
+
+  
+  const tickets = db.tickets || {};
+
+  for (const id in tickets) {
+    const t = tickets[id];
+    if (t && t.from === from) {
+      t.followUpSent = true;
+      t.type = "CLOSED";
+      t.optOut = true;
+    }
+  }
+
+  if (!db.meta) db.meta = {};
+  if (!db.meta.optOut) db.meta.optOut = {};
+  db.meta.optOut[from] = Date.now();
+
+  saveDBFile(db);
+
+  await safeSendWhatsApp(
+    from,
+    "Baik 👍\n\nKami tidak akan mengirim follow up lagi.\nJika suatu saat butuh bantuan transmisi matic, tinggal chat ya 🙏\n\n— Hongz Bengkel"
+  );
+
+  console.log("User opted out:", from);
+
+  return res.sendStatus(200);
+}
+
   // detections
   const cmdTowing = isCommand(body, "TOWING");
   const cmdJadwal = isCommand(body, "JADWAL");
@@ -1587,7 +1635,11 @@ app.get("/cron/followup", async (req, res) => {
       const minutesIdle = (now - last) / 60000;
 
       // ✅ STOP keyword (kalau customer minta stop)
-      if (t.stopFollowUp) continue;
+      
+
+// ✅ STOP / OPT-OUT (jangan follow up lagi)
+if (t.optOut) continue;
+if (t.type === "CLOSED") continue;
 
       // ✅ cek eligible
       if (!isEligibleForFollowUp(t, now, minutesIdle)) continue;
