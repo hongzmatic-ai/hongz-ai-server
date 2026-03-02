@@ -311,6 +311,19 @@ function detectSlip(body) {
     return true;
   }
 
+// 🔒 RATE LIMITER (ELITE)
+const rate = new Map();
+
+function hitRateLimit(phone, ms = 2000) {
+  const now = Date.now();
+  const last = rate.get(phone) || 0;
+  if (now - last < ms) return true;
+  rate.set(phone, now);
+  return false;
+}
+
+function slipPromptElite(style) {
+
   // gear D/R masuk tapi tidak jalan
   if (/\b(d|r)\b.*(masuk|nyantol).*(tapi|tp).*(tidak jalan|ga jalan|gak jalan)/i.test(t)) {
     return true;
