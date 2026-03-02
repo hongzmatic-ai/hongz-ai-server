@@ -1166,7 +1166,7 @@ if (isGeneralQuestion(body)) {
   return replyTwiML(res, generalPrompt(style));
 }
 
-// 2) else if (slipMode) {
+ else if (slipMode) {
 
   ticket.type = "SLIP";
   saveDBFile(db);
