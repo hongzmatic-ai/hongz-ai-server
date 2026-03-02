@@ -1185,6 +1185,39 @@ if (isGeneralQuestion(body)) {
   return replyTwiML(res, slipPromptElite(style));
 }
 
+// 1️⃣ General
+if (isGeneralQuestion(body)) {
+  saveDBFile(db);
+  return replyTwiML(res, generalPrompt(style));
+}
+
+// 2️⃣ SLIP
+else if (slipMode) {
+  ticket.type = "SLIP";
+  saveDBFile(db);
+  return replyTwiML(res, slipPromptElite(style));
+}
+
+// 3️⃣ OLI MATIC
+else if (oliMode) {
+  ticket.type = "OLI";
+  saveDBFile(db);
+  return replyTwiML(res, oliPrompt(style));
+}
+
+// 4️⃣ OVERHAUL
+else if (overhaulMode) {
+  ticket.type = "OVERHAUL";
+  saveDBFile(db);
+  return replyTwiML(res, overhaulPrompt(style));
+}
+
+// 5️⃣ TOWING / TIDAK JALAN
+else if (cmdTowing || cantDrive || hasLoc) {
+  ticket.type = "TOWING";
+}
+
+
 // 3) Towing / tidak bisa jalan / share lokasi
 else if (cmdTowing || cantDrive || hasLoc) {
   ticket.type = "TOWING";
