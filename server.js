@@ -1660,15 +1660,23 @@ app.get("/", (_req, res) => {
   return res.status(200).send(ok);
 });
 
+function requireCronKey(req) {
+  const key = String(req.query.key || "");
+  if (!process.env.CRON_KEY || key !== process.env.CRON_KEY) {
+    return false;
+  }
+  return true;
+}
+
 // ==============================
 // 🔁 CRON FOLLOW UP ENGINE (ELITE)
 // ==============================
 app.get("/cron/followup", async (req, res) => {
   try {
     // ✅ keamanan: pakai key query
-    if (req.query.key !== "hongzsecure287228") {
-      return res.status(403).send("Forbidden");
-    }
+  if (!requireCronKey(req)) {
+  return res.status(403).send("Forbidden");
+}
 
     const db = loadDBFile();
     const now = Date.now();
