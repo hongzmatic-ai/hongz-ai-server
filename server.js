@@ -1164,6 +1164,8 @@ if (STOP_KEYWORDS.some(k => body.includes(k))) {
   const noStart = detectNoStart(body);
   const cantDrive = detectCantDrive(body);       
   const slipMode = detectSlip(body);
+const oliMode = detectOli(body);
+const overhaulMode = detectOverhaul(body);
   const priceOnly = detectPriceOnly(body);
   const buying = detectBuyingSignal(body);
 
