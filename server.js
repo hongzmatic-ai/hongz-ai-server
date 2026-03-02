@@ -1242,12 +1242,6 @@ else if (cmdTowing || cantDrive || hasLoc) {
   ticket.type = "TOWING";
 }
 
-
-// 3) Towing / tidak bisa jalan / share lokasi
-else if (cmdTowing || cantDrive || hasLoc) {
-  ticket.type = "TOWING";
-}
-
 // 🔥 0) HARD CONFIRM AC
 else if (String(body || "").toLowerCase().includes("siap besok")) {
   ticket.type = "AC_CONFIRMED";
