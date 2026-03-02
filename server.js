@@ -868,6 +868,20 @@ style = String(style || "").toLowerCase();
   return "Nada: sangat tegas, prioritaskan keselamatan & tindakan cepat.";
 }
 
+// ================= CONVERSATION PHASE DETECTOR =================
+function detectConversationPhase({ score = 0, ticketType = "GENERAL", body = "" }) {
+  const t = String(body || "").toLowerCase();
+
+  if (ticketType === "TOWING") return "A"; // dominan darurat
+
+  if (/(jadwal|booking|siap|datang|besok|hari ini)/.test(t))
+    return "C"; // closing
+
+  if (score >= 7) return "A"; // serius tinggi
+
+  return "B"; // default seimbang
+}
+
 async function aiReply(userText, context) {
   if (!OPENAI_API_KEY) return null;
 
