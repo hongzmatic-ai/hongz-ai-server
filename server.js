@@ -313,6 +313,15 @@ function detectSlip(body) {
   return false;
 }
 
+function detectOli(body) {
+  const t = String(body || "").toLowerCase();
+  return /\b(ganti oli|oli matic|service oli|flush oli)\b/i.test(t);
+}
+
+function detectOverhaul(body) {
+  const t = String(body || "").toLowerCase();
+  return /\b(overhaul|turun mesin matic|bongkar total)\b/i.test(t);
+}
 
 // 🔒 RATE LIMITER (ELITE)
 const rate = new Map();
