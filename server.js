@@ -362,6 +362,30 @@ function slipPromptElite(style) {
   );
 }
 
+function oliPrompt(style) {
+  return (
+    "Baik Bang 👍\n\n" +
+    "Untuk ganti oli matic ada 2 pilihan:\n" +
+    "1️⃣ Drain biasa\n" +
+    "2️⃣ Full flush machine\n\n" +
+    "Info mobil & tahun berapa Bang?\n" +
+    "Terakhir ganti oli km berapa?"
+  );
+}
+
+function overhaulPrompt(style) {
+  return (
+    "Baik Bang 🙏\n\n" +
+    "Overhaul itu bongkar total transmisi.\n\n" +
+    "Biasanya karena:\n" +
+    "• Sudah tidak jalan\n" +
+    "• Slip parah\n" +
+    "• Bunyi kasar\n\n" +
+    "Info mobil & gejala detailnya apa Bang?\n" +
+    "Supaya saya arahkan estimasi biayanya."
+  );
+}
+
 // ================= TOWING =================
 
 function detectTowingIntent(body) {
@@ -452,6 +476,7 @@ function acPromptElite(style) {
     "Kalau mau langsung beres, kirim hari & jam datang ya."
   );
 }
+
 
 // ================= OTHER DETECTORS =================
 
