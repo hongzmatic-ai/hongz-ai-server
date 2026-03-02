@@ -771,6 +771,35 @@ function startsLikeOpener(text) {
   return /^(baik|oke|ok|siap)\s+(bang|pak)\b/.test(t) || /^saya\s+paham\b/.test(t);
 }
 
+// ================= AUTHORITY SCALING (ELITE) =================
+function buildAuthorityTone({ style, score, ticketType }) {
+
+style = String(style || "").toLowerCase();
+  let level = 1;
+
+  if (score >= 6) level++;
+  if (ticketType === "TOWING") level += 2;
+  if (ticketType === "AC_CONFIRMED") level += 1;
+  if (style === "urgent") level += 2;
+
+  // clamp 1–5
+  level = Math.max(1, Math.min(level, 5));
+
+  if (level <= 2) {
+    return "Nada: hangat, membimbing, tidak terlalu teknis.";
+  }
+
+  if (level === 3) {
+    return "Nada: profesional, jelas, langsung ke inti.";
+  }
+
+  if (level === 4) {
+    return "Nada: tegas, berbasis pola kerusakan, arahkan tindakan.";
+  }
+
+  return "Nada: sangat tegas, prioritaskan keselamatan & tindakan cepat.";
+}
+
 async function aiReply(userText, context) {
   if (!OPENAI_API_KEY) return null;
 
@@ -784,9 +813,15 @@ async function aiReply(userText, context) {
     const sys = [
       `Anda adalah Kepala Bengkel ${BIZ_NAME} di Medan.`,
 context?.memorySnippet || "",
-      "Karakter: mekanik senior, manusiawi, hangat-profesional. Jangan terdengar seperti bot.",
-      "Gaya jawaban: ringkas, tajam, relevan, tidak bertele-tele.",
-      "",
+      "Karakter: mekanik senior (diagnosa center), manusiawi, berwibawa, tenang, elegan, tegas tapi sopan. Jangan terdengar seperti bot/CS.",
+"Kepribadian: percaya diri, tidak mengemis, tidak defensif, fokus solusi.",
+"Gaya jawaban: ringkas, presisi, berbasis pola gejala. Hindari kata ragu seperti 'mungkin/kira-kira'.",
+buildAuthorityTone({
+  style,
+  score: context?.score || 0,
+  ticketType: context?.ticketType || "GENERAL"
+}),
+"",
       "ATURAN WAJIB:",
       "1) Jangan beri angka harga pasti.",
       `2) Jika user tanya lokasi/alamat → jawab hanya link maps: ${MAPS_LINK}`,
