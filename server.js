@@ -59,8 +59,8 @@ const ADMIN_MIN_SCORE = Number(ADMIN_NOTIFY_MIN_SCORE || 5);
 const ADMIN_CD_MS = Number(ADMIN_NOTIFY_COOLDOWN_SEC || 60) * 1000;
 const RADAR_CD_MS = Number(RADAR_COOLDOWN_SEC || 15) * 1000;
 
-const OAI_MAXTOK = Number(OPENAI_MAX_OUTPUT_TOKENS || 220);
-const OAI_TEMP = Number(OPENAI_TEMPERATURE || 0.3);
+const OAI_MAXTOK = Number(OPENAI_MAX_OUTPUT_TOKENS || 450);
+const OAI_TEMP = Number(OPENAI_TEMPERATURE || 0.55);
 const OAI_TIMEOUT = Number(OPENAI_TIMEOUT_MS || 9000);
 
 // ================= APP =================
@@ -530,7 +530,7 @@ function detectNoStart(body) {
   const t = String(body || "").toLowerCase();
   return /tidak bisa hidup|gak bisa hidup|ga bisa hidup|tidak bisa starter|gak bisa starter|ga bisa starter|starter|aki|accu|lampu redup/i.test(t);
 }
-
+y 
 function detectPriceOnly(body) {
   const t = String(body || "").toLowerCase();
   return /berapa|biaya|harga|kisaran|range|murah|diskon|nego|budget|ongkos/i.test(t);
@@ -961,7 +961,7 @@ buildAuthorityTone({
       text = `${opener}\n\n${text}`;
     }
 
-    if (text.length > 900) text = text.slice(0, 900).trim() + "…";
+    if (text.length > 650) text = text.slice(0, 650).trim() + "…";
     return text;
   } catch (e) {
     console.error("OpenAI failed:", e?.message || e);
