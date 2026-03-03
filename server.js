@@ -187,7 +187,7 @@ function signatureShort() {
   ].join("\n");
 }
 
-function signatureTowing() {
+function signatureTowing() {di 
   return [
     `— ${BIZ_NAME}`,
     `📲 Admin prioritas: ${WHATSAPP_ADMIN}`,
@@ -890,6 +890,28 @@ async function aiReply(userText, context) {
 
     // style dari context kalau ada (urgent/formal/casual/neutral)
     const style = String(context?.style || "neutral");
+
+// ================= PHASE A/B/C -> laneRule =================
+const phase = detectConversationPhase({
+  score: context?.score || 0,
+  ticketType: context?.ticketType || "GENERAL",
+  body: userText
+});
+
+// Simpan biar bisa dipakai di sys prompt (context?.laneRule sudah ada di file Papa)
+context = context || {};
+context.phase = phase;
+
+if (phase === "A") {
+  context.laneRule =
+    "PHASE A (LEADER): jawab tegas, ringkas, arahkan tindakan. Maks 2 pertanyaan. Prioritaskan safety & keputusan.";
+} else if (phase === "C") {
+  context.laneRule =
+    "PHASE C (CLOSING): fokus booking/jadwal. Tawarkan 2 slot waktu + minta lokasi bila perlu. Jangan panjang.";
+} else {
+  context.laneRule =
+    "PHASE B (NORMAL): jawab profesional, bantu diagnosa singkat. Maks 2 pertanyaan (mobil+tahun+gejala).";
+}
 
     // 🧠 Natural Elite prompt (GPT yang atur, tapi kita kasih “bahasa” biar gak kelihatan sistem)
     const sys = [
