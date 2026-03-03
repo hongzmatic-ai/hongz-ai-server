@@ -530,7 +530,7 @@ function detectNoStart(body) {
   const t = String(body || "").toLowerCase();
   return /tidak bisa hidup|gak bisa hidup|ga bisa hidup|tidak bisa starter|gak bisa starter|ga bisa starter|starter|aki|accu|lampu redup/i.test(t);
 }
-y 
+
 function detectPriceOnly(body) {
   const t = String(body || "").toLowerCase();
   return /berapa|biaya|harga|kisaran|range|murah|diskon|nego|budget|ongkos/i.test(t);
