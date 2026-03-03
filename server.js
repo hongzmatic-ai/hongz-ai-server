@@ -961,6 +961,8 @@ buildAuthorityTone({
       text = `${opener}\n\n${text}`;
     }
 
+text = addSoftAuthority(text, context?.phase);
+
     if (text.length > 650) text = text.slice(0, 650).trim() + "…";
     return text;
   } catch (e) {
@@ -969,7 +971,7 @@ buildAuthorityTone({
   }
 }
 
-// ================= NATURAL ELITE — STEP 2 HELPERS =================
+// ================= NATURAL ELITE — ST EP 2 HELPERS =================
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
 function detectSoftLowIntent(body) {
@@ -1000,6 +1002,16 @@ function authorityLevel({ score, isUrgent, hasLoc, hasVehicle, buyingSignal }) {
   if (score >= 5) lvl++;
   if (isUrgent || hasLoc) lvl += 2;
   return clamp(lvl, 1, 5);
+}
+
+function addSoftAuthority(text, phase) {
+  if (phase === "C") {
+    return text + "\n\nKalau berkenan, kita kunci jadwal supaya mobil tidak makin berat kondisinya.";
+  }
+  if (phase === "A") {
+    return text + "\n\nLebih cepat ditangani, lebih aman untuk komponen lain.";
+  }
+  return text;
 }
 
 function softClose({ lvl, lane, style }) {
