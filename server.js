@@ -1246,6 +1246,30 @@ const TRANSMISSION_SYMPTOMS = [
   }
 ];
 
+function detectTransmissionSymptoms(text = "") {
+  const t = String(text || "").toLowerCase();
+
+  const matches = TRANSMISSION_SYMPTOMS.filter(item =>
+    item.keywords.some(k => t.includes(k.toLowerCase()))
+  );
+
+  if (!matches.length) return null;
+
+  const top = matches.slice(0, 3);
+
+  const possible = [...new Set(top.flatMap(x => x.possible))].slice(0, 4);
+  const severityRank = { low: 1, medium: 2, high: 3, critical: 4 };
+  const topSeverity = top.reduce((acc, cur) =>
+    severityRank[cur.severity] > severityRank[acc] ? cur.severity : acc
+  , "low");
+
+  return {
+    matchedIds: top.map(x => x.id),
+    possible,
+    severity: topSeverity
+  };
+}
+
 async function aiReply(userText, context) {
   if (!OPENAI_API_KEY) return null;
 
@@ -1255,6 +1279,9 @@ async function aiReply(userText, context) {
     // style dari context kalau ada (urgent/formal/casual/neutral)
 
     const style = String(context?.style || "neutral");
+
+const atfInfo = getATFInfoByText(userText);
+const symptomInfo = detectTransmissionSymptoms(userText);
 
 const radar = detectRadarUser(userText);
 const spySignal = detectCompetitorSpy(userText);
