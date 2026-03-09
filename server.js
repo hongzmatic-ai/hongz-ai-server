@@ -1916,7 +1916,7 @@ function computeCustomerSeriousScore({
 
   let score = 0;
 
-// ada mobil disebut
+ ada mobil disebut
   if (hasVehicle || /(avanza|xenia|rush|terios|innova|camry|yaris|hrv|jazz|brio|mobilio|xpander|pajero|fortuner|serena|livina)/i.test(t)) {
     score += 2;
   }
