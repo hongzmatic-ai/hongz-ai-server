@@ -913,7 +913,10 @@ const ATF_DATABASE = {
       "Raize CVT",
       "Agya CVT",
       "Yaris Cross CVT",
-      "Veloz CVT"
+      "Veloz CVT",
+      "Velloz CVT",
+      "Rocky CVT",
+      "Ayla CVT"
     ],
     interval: "sekitar 20.000 km untuk menjaga umur transmisi"
     notes: "CVT Toyota / Daihatsu modern"
@@ -944,17 +947,32 @@ const ATF_DATABASE = {
       "Montero AT",
       "Xpander AT",
       "Xpander Cross AT",
-      "Outlander AT"
+      "Outlander AT",
+      "Hyundai AT tertentu",
+      "Kia AT tertentu"
     ],
     interval: "sekitar 20.000 km untuk menjaga umur transmisi"
     notes: "AT Mitsubishi / Hyundai / Kia tertentu"
+  },
+
+  mitsubishi_cvt: {
+    brand: "Idemitsu",
+    type: "CVTF",
+    suitable: [
+      "Xpander CVT",
+      "Xforce CVT",
+      "Mirage CVT",
+      "Attrage CVT"
+    ],
+    interval: "sekitar 20.000 km untuk menjaga umur transmisi"
+    notes: "CVT Mitsubishi"
   },
 
   nissan_cvt: {
     brand: "Idemitsu",
     type: "NS-2 / NS-3",
     suitable: [
-      "Nissan Xtrail CVT",
+      "Nissan X-Trail CVT",
       "Serena CVT",
       "Grand Livina CVT",
       "Livina CVT",
@@ -963,6 +981,19 @@ const ATF_DATABASE = {
     ],
     interval: "sekitar 20.000 km untuk menjaga umur transmisi"
     notes: "CVT Nissan"
+  },
+
+  dct_dsg: {
+    brand: "Idemitsu",
+    type: "DCTF / DSG Fluid",
+    suitable: [
+      "VW DSG",
+      "Audi DSG",
+      "Ford Powershift",
+      "DCT tertentu"
+    ],
+    interval: "sekitar 20.000 km untuk menjaga umur transmisi"
+    notes: "DCT / DSG"
   },
 
   universal: {
@@ -974,7 +1005,7 @@ const ATF_DATABASE = {
   }
 };
 
-// ================= ATF HELPER =================
+// ================= TEXT NORMALIZER =================
 function normalizeText(text = "") {
   return String(text || "")
     .toLowerCase()
@@ -983,11 +1014,13 @@ function normalizeText(text = "") {
     .trim();
 }
 
+// ================= DETECT USER ASKING ABOUT ATF =================
 function isAskingATF(text = "") {
   const t = normalizeText(text);
   return /(oli matic|oli transmisi|atf|cvtf|merk oli|pakai oli apa|pakai merk apa|oli apa|oli gearbox|oli cvt)/i.test(t);
 }
 
+// ================= ATF PICKER =================
 function getATFInfoByText(text = "") {
   const t = normalizeText(text);
 
@@ -997,18 +1030,23 @@ function getATFInfoByText(text = "") {
   }
 
   // Toyota / Daihatsu CVT
-  if (/(yaris|corolla cross|raize|agya cvt|agya|rocky|ayla cvt|ayla|yaris cross|veloz cvt|velloz cvt)/i.test(t)) {
+  if (/(yaris|corolla cross|raize|agya|rocky|ayla|yaris cross|veloz cvt|velloz cvt)/i.test(t)) {
     return ATF_DATABASE.toyota_cvt;
   }
 
   // Honda CVT
-  if (/(jazz|brv|br-v|hrv|hr-v|brio cvt|mobilio cvt|wrv|wr-v|city hatchback|crv cvt|cr-v cvt)/i.test(t)) {
+  if (/(jazz|brv|br-v|hrv|hr-v|brio|mobilio|wrv|wr-v|city hatchback|crv cvt|cr-v cvt)/i.test(t)) {
     return ATF_DATABASE.honda_cvt;
   }
 
-  // Mitsubishi / Hyundai / Kia AT
+  // Mitsubishi AT
   if (/(pajero|montero|xpander at|xpander cross at|outlander at|hyundai at|kia at)/i.test(t)) {
     return ATF_DATABASE.mitsubishi_at;
+  }
+
+  // Mitsubishi CVT
+  if (/(xpander cvt|xforce|mirage cvt|attrage cvt)/i.test(t)) {
+    return ATF_DATABASE.mitsubishi_cvt;
   }
 
   // Nissan CVT
@@ -1016,12 +1054,216 @@ function getATFInfoByText(text = "") {
     return ATF_DATABASE.nissan_cvt;
   }
 
-  // fallback kalau user tanya oli tapi mobil belum jelas
+  // DCT / DSG
+  if (/(dct|dsg|double clutch|powershift|golf|jetta|passat|tiguan|vw|volkswagen|audi)/i.test(t)) {
+    return ATF_DATABASE.dct_dsg;
+  }
+
+  // Fallback kalau user tanya oli tapi mobil belum jelas
   if (isAskingATF(t) || /(matic|otomatis|transmisi matic|cvt)/i.test(t)) {
     return ATF_DATABASE.universal;
   }
 
   return null;
+}
+
+// ================= AUTO DETECT TRANSMISSION TYPE =================
+function detectTransmissionType(text = "") {
+  const t = normalizeText(text);
+
+  if (/\b(cvt|cvtf|pulley|belt cvt|steel belt)\b/i.test(t)) {
+    return {
+      type: "CVT",
+      confidence: "high",
+      reason: "User menyebut kata kunci CVT secara langsung."
+    };
+  }
+
+  if (/\b(dct|dsg|double clutch|kopling ganda|powershift)\b/i.test(t)) {
+    return {
+      type: "DCT",
+      confidence: "high",
+      reason: "User menyebut kata kunci DCT/DSG secara langsung."
+    };
+  }
+
+  if (/\b(at|matic biasa|matic konvensional|torque converter|atf ws|sp iii)\b/i.test(t)) {
+    return {
+      type: "AT",
+      confidence: "high",
+      reason: "User menyebut kata kunci AT konvensional secara langsung."
+    };
+  }
+
+  if (/(avanza|xenia|rush|terios|innova|camry|fortuner|calya|sigra)/i.test(t)) {
+    return {
+      type: "AT",
+      confidence: "medium",
+      reason: "Model kendaraan umum AT konvensional."
+    };
+  }
+
+  if (/(hrv|hr-v|jazz|brio|mobilio|wr-v|wrv|city hatchback|crv cvt|cr-v cvt|yaris cross|corolla cross|raize|rocky|ayla|agya|xtrail|x-trail|serena|livina cvt|juke|march|xpander cvt|xforce)/i.test(t)) {
+    return {
+      type: "CVT",
+      confidence: "medium",
+      reason: "Model kendaraan umum CVT."
+    };
+  }
+
+  if (/(golf|jetta|passat|tiguan|audi|vw|volkswagen)/i.test(t)) {
+    return {
+      type: "DCT",
+      confidence: "medium",
+      reason: "Model kendaraan umum DSG/DCT."
+    };
+  }
+
+  if (/(belt selip|pulley|dengung cvt|gredek cvt)/i.test(t)) {
+    return {
+      type: "CVT",
+      confidence: "medium",
+      reason: "Gejala lebih dekat ke karakter CVT."
+    };
+  }
+
+  if (/(selip kopling ganda|mechatronic|overheat dsg|gigi ganjil genap)/i.test(t)) {
+    return {
+      type: "DCT",
+      confidence: "medium",
+      reason: "Gejala lebih dekat ke karakter DCT/DSG."
+    };
+  }
+
+  if (/(nyentak masuk d|mundur delay|kickdown keras|torque converter|masuk d keras)/i.test(t)) {
+    return {
+      type: "AT",
+      confidence: "low",
+      reason: "Gejala cenderung AT konvensional, perlu verifikasi."
+    };
+  }
+
+  return {
+    type: "UNKNOWN",
+    confidence: "low",
+    reason: "Belum cukup data untuk memastikan jenis transmisi."
+  };
+}
+
+// ================= AUTO DETECT SEVERITY LEVEL =================
+function detectSeverityLevel(text = "") {
+  const t = normalizeText(text);
+
+  const ringanKeywords = [
+    "telat pindah",
+    "agak telat",
+    "sedikit getar",
+    "kadang nyentak",
+    "oli hitam",
+    "belum pernah ganti oli",
+    "service berkala",
+    "perawatan",
+    "bunyi halus",
+    "dengung ringan",
+    "baru terasa",
+    "kadang saja"
+  ];
+
+  const sedangKeywords = [
+    "nyentak",
+    "jedug",
+    "selip",
+    "rpm naik tapi tidak lari",
+    "rpm tinggi tapi tidak lari",
+    "masuk d lambat",
+    "mundur lambat",
+    "gredek",
+    "overheat",
+    "getar saat jalan",
+    "kickdown keras",
+    "tenaga kosong",
+    "transmisi panas",
+    "masuk d delay",
+    "mundur delay"
+  ];
+
+  const beratKeywords = [
+    "tidak bisa jalan",
+    "tidak mau jalan",
+    "mobil tidak bergerak",
+    "hilang gigi",
+    "gagal jalan",
+    "mundur tidak mau",
+    "masuk d tidak mau",
+    "mati total",
+    "suara kasar keras",
+    "bunyi keras",
+    "ngunci",
+    "slip parah",
+    "harus towing",
+    "asap",
+    "bau gosong berat",
+    "d dan r tidak jalan",
+    "masuk d dan r tidak gerak"
+  ];
+
+  let ringan = 0;
+  let sedang = 0;
+  let berat = 0;
+
+  for (const k of ringanKeywords) {
+    if (t.includes(k)) ringan += 1;
+  }
+
+  for (const k of sedangKeywords) {
+    if (t.includes(k)) sedang += 2;
+  }
+
+  for (const k of beratKeywords) {
+    if (t.includes(k)) berat += 3;
+  }
+
+  if (/(tidak bisa jalan|tidak mau jalan|mobil tidak bergerak|harus towing|masuk d dan r tidak gerak)/i.test(t)) {
+    berat += 4;
+  }
+
+  if (/(nyentak|jedug|selip|gredek|mundur lambat|masuk d lambat|rpm tinggi tapi tidak lari)/i.test(t)) {
+    sedang += 2;
+  }
+
+  if (/(ganti oli|servis berkala|baru terasa ringan|kadang saja)/i.test(t)) {
+    ringan += 1;
+  }
+
+  if (berat >= 4) {
+    return {
+      level: "BERAT",
+      advice: "Jangan dipaksakan jalan. Prioritaskan pengecekan langsung / towing bila perlu.",
+      score: berat
+    };
+  }
+
+  if (sedang >= 2) {
+    return {
+      level: "SEDANG",
+      advice: "Masih bisa mengarah ke kerusakan berkembang. Sarankan cek sebelum dipakai jauh.",
+      score: sedang
+    };
+  }
+
+  if (ringan >= 1) {
+    return {
+      level: "RINGAN",
+      advice: "Masih tahap awal / indikasi ringan. Cocok diarahkan ke perawatan dan pengecekan dini.",
+      score: ringan
+    };
+  }
+
+  return {
+    level: "BELUM JELAS",
+    advice: "Gejala belum cukup detail. Minta 1-2 info tambahan: mobil, tahun, gejala paling terasa.",
+    score: 0
+  };
 }
 
 // ================= HONGZ TRANSMISSION SYMPTOM DATABASE =================
