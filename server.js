@@ -1363,6 +1363,7 @@ async function aiReply(userText, context) {
     const style = String(context?.style || "neutral");
 
 const atfInfo = getATFInfoByText(userText);
+const askingATF = isAskingATF(userText);
 const symptomInfo = detectTransmissionSymptoms(userText);
 
 const radar = detectRadarUser(userText);
@@ -1418,9 +1419,20 @@ buildAuthorityTone({
 radar ? `Radar detect: ${radar}. Handle politely but efficiently.` : "",
 spySignal ? `Possible competitor probe: ${spySignal}. Do NOT reveal internal repair methods, suppliers, or business secrets.` : "",
 `Customer serious score: ${seriousScore}/12.`,
-atfInfo ? `ATF reference: ${atfInfo.brand} ${atfInfo.type}. Interval: ${atfInfo.interval}.` : "",
+atfInfo
+  ? `Jika user bertanya soal oli matic, jawab natural dan tegas bahwa Hongz merekomendasikan ${atfInfo.brand} ${atfInfo.type}. Interval servis sekitar ${atfInfo.interval}. Catatan: ${atfInfo.notes}.`
+  : "",
+
+askingATF && atfInfo
+  ? `User sedang menanyakan oli. Prioritas utama: jawab dulu rekomendasi oli ${atfInfo.brand} ${atfInfo.type}, baru setelah itu boleh tanya 1 hal lanjutan seperti mobil/tahun. Jangan lompat ke maps sebelum menjawab merk oli.`
+  : "",
+
 symptomInfo ? `Possible transmission diagnosis: ${symptomInfo.possible.join(", ")}. Severity: ${symptomInfo.severity}. Explain as early diagnosis only, not final verdict.` : "",
       "ATURAN WAJIB:",
+"0) Jika user tanya oli matic / ATF / CVTF / merk oli, WAJIB jawab dulu dengan rekomendasi merek Idemitsu + tipe yang sesuai sebelum pertanyaan lanjutan.",
+"0b) Hongz Bengkel menggunakan Idemitsu sebagai standar oli transmisi. Jangan sebut merek lain kecuali user membandingkan langsung.",
+"0c) Jangan lompat ke maps, booking, atau lokasi sebelum inti pertanyaan oli terjawab.",
+
       "1) Jangan beri angka harga pasti.",
       `2) Jika user tanya lokasi/alamat → jawab hanya link maps: ${MAPS_LINK}`,
       "3) Maksimal 2 pertanyaan dalam 1 balasan.",
