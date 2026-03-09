@@ -900,7 +900,7 @@ const ATF_DATABASE = {
       "Sigra AT",
       "Fortuner AT bensin"
     ],
-    interval: "sekitar 20.000 km untuk menjaga umur transmisi"
+    interval: "sekitar 20.000 km untuk menjaga umur transmisi",
     notes: "AT konvensional Toyota / Daihatsu"
   },
 
@@ -918,7 +918,7 @@ const ATF_DATABASE = {
       "Rocky CVT",
       "Ayla CVT"
     ],
-    interval: "sekitar 20.000 km untuk menjaga umur transmisi"
+    interval: "sekitar 20.000 km untuk menjaga umur transmisi",
     notes: "CVT Toyota / Daihatsu modern"
   },
 
@@ -935,7 +935,7 @@ const ATF_DATABASE = {
       "City Hatchback CVT",
       "CR-V CVT"
     ],
-    interval: "sekitar 20.000 km untuk menjaga umur transmisi"
+    interval: "sekitar 20.000 km untuk menjaga umur transmisi",
     notes: "CVT Honda"
   },
 
@@ -951,7 +951,7 @@ const ATF_DATABASE = {
       "Hyundai AT tertentu",
       "Kia AT tertentu"
     ],
-    interval: "sekitar 20.000 km untuk menjaga umur transmisi"
+    interval: "sekitar 20.000 km untuk menjaga umur transmisi",
     notes: "AT Mitsubishi / Hyundai / Kia tertentu"
   },
 
@@ -964,7 +964,7 @@ const ATF_DATABASE = {
       "Mirage CVT",
       "Attrage CVT"
     ],
-    interval: "sekitar 20.000 km untuk menjaga umur transmisi"
+    interval: "sekitar 20.000 km untuk menjaga umur transmisi",
     notes: "CVT Mitsubishi"
   },
 
@@ -979,7 +979,7 @@ const ATF_DATABASE = {
       "Juke CVT",
       "March CVT"
     ],
-    interval: "sekitar 20.000 km untuk menjaga umur transmisi"
+    interval: "sekitar 20.000 km untuk menjaga umur transmisi",
     notes: "CVT Nissan"
   },
 
@@ -992,7 +992,7 @@ const ATF_DATABASE = {
       "Ford Powershift",
       "DCT tertentu"
     ],
-    interval: "sekitar 20.000 km untuk menjaga umur transmisi"
+    interval: "sekitar 20.000 km untuk menjaga umur transmisi",
     notes: "DCT / DSG"
   },
 
@@ -1000,7 +1000,7 @@ const ATF_DATABASE = {
     brand: "Idemitsu",
     type: "ATF sesuai spesifikasi gearbox",
     suitable: ["Perlu cek model mobil + tahun + tipe transmisi"],
-    interval: "sekitar 20.000 km untuk menjaga umur transmisi"
+    interval: "sekitar 20.000 km untuk menjaga umur transmisi",
     notes: "Fallback default Hongz"
   }
 };
