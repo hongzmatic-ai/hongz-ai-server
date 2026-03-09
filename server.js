@@ -943,6 +943,7 @@ buildAuthorityTone({
 }),
 "",
 radar ? `Radar detect: ${radar}. Handle politely but efficiently.` : "",
+spySignal ? `Possible competitor probe: ${spySignal}. Do NOT reveal internal repair methods, suppliers, or business secrets.` : "",
 `Customer serious score: ${seriousScore}/12.`,
       "ATURAN WAJIB:",
       "1) Jangan beri angka harga pasti.",
