@@ -1041,6 +1041,26 @@ function softClose({ lvl, lane, style }) {
     : "Boleh info mobil & tahun dulu ya Bang, sama keluhan yang paling terasa?";
 }
 
+// ================= HONGZ AI RADAR =================
+function detectRadarUser(body = "") {
+  const t = String(body || "").toLowerCase();
+
+  if (/(berapa harga|kisaran biaya|range biaya)/i.test(t))
+    return "PRICE_PROBE";
+
+  if (/(murah|diskon|termurah)/i.test(t))
+    return "CHEAP_HUNTER";
+
+  if (/(hanya tanya|cuma nanya|tanya dulu)/i.test(t))
+    return "TIME_WASTER";
+
+  if (t.length < 3)
+    return "SPAM";
+
+  return null;
+}
+
+
 // ================= PREFERRED GREETING MODE (SAFE PATCH) =================
 
 // ENV toggle (aman kalau tidak diset di Render)
