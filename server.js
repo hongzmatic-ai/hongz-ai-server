@@ -942,6 +942,310 @@ function getATFInfoByText(text = "") {
   return null;
 }
 
+// ================= HONGZ TRANSMISSION SYMPTOM DATABASE =================
+const TRANSMISSION_SYMPTOMS = [
+  {
+    id: "SYM_01",
+    keywords: ["rpm naik", "mobil tidak jalan", "mesin naik tapi mobil tidak jalan"],
+    possible: ["kampas kopling selip", "torque converter bermasalah", "tekanan oli transmisi lemah"],
+    severity: "high"
+  },
+  {
+    id: "SYM_02",
+    keywords: ["masuk d tidak jalan", "masuk gigi d tidak jalan", "d tidak respon"],
+    possible: ["torque converter rusak", "tekanan oli transmisi hilang", "kampas maju aus"],
+    severity: "high"
+  },
+  {
+    id: "SYM_03",
+    keywords: ["masuk r tidak jalan", "gigi mundur tidak jalan", "r tidak respon"],
+    possible: ["kampas reverse aus", "seal bocor", "tekanan oli reverse lemah"],
+    severity: "high"
+  },
+  {
+    id: "SYM_04",
+    keywords: ["hentak", "jedug", "kasar pindah gigi", "pindah gigi keras"],
+    possible: ["solenoid lemah", "valve body kotor", "tekanan oli tidak stabil"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_05",
+    keywords: ["delay masuk d", "masuk d telat", "d masuk lama"],
+    possible: ["tekanan oli lemah", "seal piston bocor", "kampas mulai aus"],
+    severity: "high"
+  },
+  {
+    id: "SYM_06",
+    keywords: ["delay masuk r", "mundur telat", "r masuk lama"],
+    possible: ["kampas reverse aus", "valve body bermasalah", "tekanan oli reverse rendah"],
+    severity: "high"
+  },
+  {
+    id: "SYM_07",
+    keywords: ["selip", "slip", "ngelos"],
+    possible: ["kampas kopling aus", "oli transmisi lemah", "tekanan oli drop"],
+    severity: "high"
+  },
+  {
+    id: "SYM_08",
+    keywords: ["getar", "vibrasi", "bergetar saat jalan"],
+    possible: ["torque converter tidak stabil", "mounting perlu dicek", "kampas mulai aus"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_09",
+    keywords: ["dengung", "bunyi dengung", "ngorok"],
+    possible: ["bearing transmisi aus", "pompa oli bermasalah", "gear set perlu dicek"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_10",
+    keywords: ["bunyi kasar", "suara kasar", "berisik"],
+    possible: ["bearing aus", "gear train bermasalah", "komponen internal aus"],
+    severity: "high"
+  },
+  {
+    id: "SYM_11",
+    keywords: ["overheat", "panas", "transmisi panas"],
+    possible: ["cooler tersumbat", "oli transmisi menurun", "beban internal tinggi"],
+    severity: "high"
+  },
+  {
+    id: "SYM_12",
+    keywords: ["lampu at menyala", "lampu matic menyala", "indikator transmisi menyala"],
+    possible: ["fault sensor", "solenoid error", "TCM membaca gangguan transmisi"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_13",
+    keywords: ["limp mode", "gigi 3 terus", "jalan di satu gigi"],
+    possible: ["solenoid error", "sensor transmisi bermasalah", "TCM proteksi"],
+    severity: "high"
+  },
+  {
+    id: "SYM_14",
+    keywords: ["cvt ngeden", "berat", "lemot tarikan"],
+    possible: ["belt cvt aus", "pulley lemah", "tekanan oli cvt rendah"],
+    severity: "high"
+  },
+  {
+    id: "SYM_15",
+    keywords: ["rpm tinggi", "rpm tinggi tapi lambat", "teriak"],
+    possible: ["kampas selip", "rasio cvt tidak naik normal", "tekanan oli tidak cukup"],
+    severity: "high"
+  },
+  {
+    id: "SYM_16",
+    keywords: ["sentak awal", "jeduk awal jalan", "hentak awal"],
+    possible: ["engine mounting perlu dicek", "tekanan oli awal tinggi", "valve body kurang halus"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_17",
+    keywords: ["kickdown tidak respon", "tenaga kosong saat injak", "gas dalam tidak narik"],
+    possible: ["solenoid respon lambat", "tekanan oli tidak cukup", "kampas mulai lemah"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_18",
+    keywords: ["tidak mau upshift", "gigi tidak naik", "tertahan di gigi bawah"],
+    possible: ["solenoid shift bermasalah", "sensor speed error", "valve body macet"],
+    severity: "high"
+  },
+  {
+    id: "SYM_19",
+    keywords: ["tidak mau downshift", "gigi tidak turun"],
+    possible: ["solenoid shift error", "valve body kotor", "TCM perlu dicek"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_20",
+    keywords: ["hunting gear", "naik turun gigi sendiri", "bingung pindah gigi"],
+    possible: ["sensor input/output bermasalah", "solenoid tidak stabil", "tekanan oli fluktuatif"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_21",
+    keywords: ["masuk netral sendiri", "ngenetral", "hilang tenaga tiba tiba"],
+    possible: ["kampas habis", "tekanan oli hilang", "valve body bermasalah"],
+    severity: "high"
+  },
+  {
+    id: "SYM_22",
+    keywords: ["bocor oli matic", "oli matic bocor", "rembes oli transmisi"],
+    possible: ["seal bocor", "gasket karter bocor", "oil seal as bermasalah"],
+    severity: "high"
+  },
+  {
+    id: "SYM_23",
+    keywords: ["oli hitam", "oli gosong", "bau terbakar"],
+    possible: ["kampas terlalu panas", "slip berkepanjangan", "overheat transmisi"],
+    severity: "high"
+  },
+  {
+    id: "SYM_24",
+    keywords: ["masuk d ada bunyi", "masuk r ada bunyi", "bunyi saat masuk gigi"],
+    possible: ["tekanan oli kasar", "mounting lemah", "komponen internal mulai aus"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_25",
+    keywords: ["tarikan putus putus", "sendat", "nyentak nyentak"],
+    possible: ["solenoid tidak stabil", "sensor throttle/input error", "valve body kotor"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_26",
+    keywords: ["tidak dingin", "ac tidak dingin saat jalan", "rpm naik ac mati"],
+    possible: ["beban transmisi tinggi", "idle drop perlu dicek", "kompresor/ac dan transmisi perlu dipisah diagnosa"],
+    severity: "low"
+  },
+  {
+    id: "SYM_27",
+    keywords: ["berat di tanjakan", "tidak kuat nanjak", "ngeden di tanjakan"],
+    possible: ["kampas selip", "belt cvt lemah", "tekanan oli tidak cukup"],
+    severity: "high"
+  },
+  {
+    id: "SYM_28",
+    keywords: ["mundur ngempos", "reverse lemah", "mundur berat"],
+    possible: ["kampas reverse aus", "tekanan oli reverse lemah", "seal bocor"],
+    severity: "high"
+  },
+  {
+    id: "SYM_29",
+    keywords: ["maju ngempos", "jalan maju lemah"],
+    possible: ["kampas forward aus", "torque converter lemah", "tekanan oli maju rendah"],
+    severity: "high"
+  },
+  {
+    id: "SYM_30",
+    keywords: ["gigi loncat", "perpindahan aneh", "rasio aneh"],
+    possible: ["sensor speed error", "TCM/solenoid bermasalah", "valve body tidak stabil"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_31",
+    keywords: ["suara nging", "whining", "mendering"],
+    possible: ["pompa oli transmisi", "bearing aus", "tekanan oli tinggi/rendah abnormal"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_32",
+    keywords: ["bergetar saat stop", "getar saat d tahan rem"],
+    possible: ["torque converter", "mounting mesin/transmisi", "idle mesin perlu dicek"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_33",
+    keywords: ["ndut ndutan", "dorong tarik", "nyentak pelan pelan"],
+    possible: ["lock-up torque converter tidak stabil", "solenoid lock-up", "sensor pembacaan tidak konsisten"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_34",
+    keywords: ["cvt selip", "cvt slip", "rpm naik cvt tidak jalan"],
+    possible: ["belt cvt aus", "pulley aus", "tekanan oli cvt drop"],
+    severity: "high"
+  },
+  {
+    id: "SYM_35",
+    keywords: ["lampu check menyala", "check engine dan matic", "dtc transmisi"],
+    possible: ["sensor transmisi", "solenoid", "komunikasi ECU/TCM perlu scan"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_36",
+    keywords: ["gigi masuk tapi jeduk", "keras saat masuk d", "keras saat masuk r"],
+    possible: ["mounting lemah", "idle tinggi", "valve body/tekanan oli kasar"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_37",
+    keywords: ["tidak bisa manual mode", "triptronic tidak jalan", "manual shift tidak respon"],
+    possible: ["switch manual mode", "sensor posisi transmisi", "TCM perlu dicek"],
+    severity: "low"
+  },
+  {
+    id: "SYM_38",
+    keywords: ["stuck di n", "masuk gigi tidak bisa", "tuas normal tapi tidak masuk"],
+    possible: ["shift lock / linkage", "switch inhibitor", "tekanan transmisi perlu dicek"],
+    severity: "high"
+  },
+  {
+    id: "SYM_39",
+    keywords: ["berat pagi", "pagi tidak mau jalan", "dingin telat jalan"],
+    possible: ["seal mengeras", "tekanan oli saat dingin lemah", "kampas mulai aus"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_40",
+    keywords: ["setelah panas slip", "panas baru ngelos", "kalau panas bermasalah"],
+    possible: ["tekanan oli drop saat panas", "seal bocor saat temperatur naik", "kampas sudah tipis"],
+    severity: "high"
+  },
+  {
+    id: "SYM_41",
+    keywords: ["mati saat masuk d", "masuk gigi mesin mati", "stalled saat masuk gigi"],
+    possible: ["torque converter lock-up", "idle mesin terlalu rendah", "beban masuk terlalu berat"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_42",
+    keywords: ["bunyi klik", "bunyi tek tek saat masuk gigi"],
+    possible: ["mounting/linkage", "komponen mekanis luar", "perlu cek fisik lebih dulu"],
+    severity: "low"
+  },
+  {
+    id: "SYM_43",
+    keywords: ["raungan tinggi", "teriak saat jalan", "suara tinggi"],
+    possible: ["slip rasio", "belt cvt lemah", "pompa oli / tekanan tidak sesuai"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_44",
+    keywords: ["masuk gigi lambat setelah servis", "habis ganti oli jadi slip", "setelah kuras bermasalah"],
+    possible: ["level oli tidak pas", "jenis oli tidak sesuai", "kondisi kampas lama terangkat setelah servis"],
+    severity: "high"
+  },
+  {
+    id: "SYM_45",
+    keywords: ["maju mundur dua dua nya lemah", "semua gigi lemah", "semua posisi lemah"],
+    possible: ["pompa oli transmisi", "torque converter", "tekanan utama sangat rendah"],
+    severity: "high"
+  },
+  {
+    id: "SYM_46",
+    keywords: ["rpm naik saat pindah", "flare shift", "pindah gigi rpm naik dulu"],
+    possible: ["kampas selip saat shift", "solenoid shift lambat", "tekanan oli transisi kurang"],
+    severity: "high"
+  },
+  {
+    id: "SYM_47",
+    keywords: ["nyangkut di satu gigi", "stuck gear", "gigi tidak berubah"],
+    possible: ["limp mode", "solenoid", "sensor speed / TCM perlu scan"],
+    severity: "high"
+  },
+  {
+    id: "SYM_48",
+    keywords: ["bunyi saat tanjakan", "tanjakan bunyi", "raung saat nanjak"],
+    possible: ["belt cvt lemah", "slip internal", "beban transmisi tinggi"],
+    severity: "medium"
+  },
+  {
+    id: "SYM_49",
+    keywords: ["jalan normal tapi mundur tidak ada", "reverse hilang", "r hilang"],
+    possible: ["kampas reverse habis", "seal reverse bocor", "valve reverse bermasalah"],
+    severity: "high"
+  },
+  {
+    id: "SYM_50",
+    keywords: ["mobil tidak mau gerak", "tidak bisa jalan", "mati gerak"],
+    possible: ["torque converter", "kampas utama habis", "tekanan oli transmisi hilang"],
+    severity: "critical"
+  }
+];
+
 async function aiReply(userText, context) {
   if (!OPENAI_API_KEY) return null;
 
