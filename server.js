@@ -884,59 +884,141 @@ function detectConversationPhase({ score = 0, ticketType = "GENERAL", body = "" 
 
 // ================= HONGZ ATF DATABASE =================
 const ATF_DATABASE = {
-policy: "Hongz Bengkel menggunakan oli transmisi Idemitsu sebagai standar layanan.",
-  "toyota_at": {
+  policy: "Hongz Bengkel menggunakan oli transmisi Idemitsu sebagai standar layanan.",
+
+  toyota_at: {
     brand: "Idemitsu",
     type: "ATF WS",
-    suitable: ["Avanza AT", "Rush AT", "Innova AT", "Camry AT"],
-    interval: "30.000 – 40.000 km",
-    notes: "AT konvensional Toyota"
+    suitable: [
+      "Avanza AT",
+      "Xenia AT",
+      "Rush AT",
+      "Terios AT",
+      "Innova AT",
+      "Camry AT",
+      "Calya AT",
+      "Sigra AT",
+      "Fortuner AT bensin"
+    ],
+    interval: "30.000 - 40.000 km",
+    notes: "AT konvensional Toyota / Daihatsu"
   },
 
-  "toyota_cvt": {
+  toyota_cvt: {
     brand: "Idemitsu",
     type: "CVTF Type TL / TC",
-    suitable: ["Corolla Cross CVT", "Yaris CVT"],
-    interval: "30.000 km",
-    notes: "CVT Toyota"
+    suitable: [
+      "Yaris CVT",
+      "Corolla Cross CVT",
+      "Raize CVT",
+      "Agya CVT",
+      "Yaris Cross CVT",
+      "Veloz CVT"
+    ],
+    interval: "30.000 - 40.000 km",
+    notes: "CVT Toyota / Daihatsu modern"
   },
 
-  "honda_cvt": {
+  honda_cvt: {
     brand: "Idemitsu",
     type: "CVTF HCF-2",
-    suitable: ["Honda Jazz CVT", "BRV CVT", "HRV CVT"],
-    interval: "30.000 km",
+    suitable: [
+      "Honda Jazz CVT",
+      "BR-V CVT",
+      "HR-V CVT",
+      "Brio CVT",
+      "Mobilio CVT",
+      "WR-V CVT",
+      "City Hatchback CVT",
+      "CR-V CVT"
+    ],
+    interval: "30.000 - 40.000 km",
     notes: "CVT Honda"
   },
 
-  "nissan_cvt": {
+  mitsubishi_at: {
+    brand: "Idemitsu",
+    type: "ATF SP III",
+    suitable: [
+      "Pajero Sport AT",
+      "Montero AT",
+      "Xpander AT",
+      "Xpander Cross AT",
+      "Outlander AT"
+    ],
+    interval: "30.000 - 40.000 km",
+    notes: "AT Mitsubishi / Hyundai / Kia tertentu"
+  },
+
+  nissan_cvt: {
     brand: "Idemitsu",
     type: "NS-2 / NS-3",
-    suitable: ["Nissan Xtrail CVT", "Serena CVT"],
-    interval: "30.000 km",
+    suitable: [
+      "Nissan Xtrail CVT",
+      "Serena CVT",
+      "Grand Livina CVT",
+      "Livina CVT",
+      "Juke CVT",
+      "March CVT"
+    ],
+    interval: "30.000 - 40.000 km",
     notes: "CVT Nissan"
+  },
+
+  universal: {
+    brand: "Idemitsu",
+    type: "ATF sesuai spesifikasi gearbox",
+    suitable: ["Perlu cek model mobil + tahun + tipe transmisi"],
+    interval: "30.000 - 40.000 km",
+    notes: "Fallback default Hongz"
   }
 };
 
- 
 // ================= ATF HELPER =================
-function getATFInfoByText(text = "") {
-  const t = String(text || "").toLowerCase();
+function normalizeText(text = "") {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s\-\/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  if (/(avanza|rush|innova|camry)/i.test(t)) {
+function isAskingATF(text = "") {
+  const t = normalizeText(text);
+  return /(oli matic|oli transmisi|atf|cvtf|merk oli|pakai oli apa|pakai merk apa|oli apa|oli gearbox|oli cvt)/i.test(t);
+}
+
+function getATFInfoByText(text = "") {
+  const t = normalizeText(text);
+
+  // Toyota / Daihatsu AT konvensional
+  if (/(avanza|xenia|rush|terios|innova|camry|calya|sigra|fortuner)/i.test(t)) {
     return ATF_DATABASE.toyota_at;
   }
 
-  if (/(yaris|corolla cross)/i.test(t)) {
+  // Toyota / Daihatsu CVT
+  if (/(yaris|corolla cross|raize|agya cvt|agya|rocky|ayla cvt|ayla|yaris cross|veloz cvt|velloz cvt)/i.test(t)) {
     return ATF_DATABASE.toyota_cvt;
   }
 
-  if (/(jazz|brv|hrv)/i.test(t)) {
+  // Honda CVT
+  if (/(jazz|brv|br-v|hrv|hr-v|brio cvt|mobilio cvt|wrv|wr-v|city hatchback|crv cvt|cr-v cvt)/i.test(t)) {
     return ATF_DATABASE.honda_cvt;
   }
 
-  if (/(xtrail|serena)/i.test(t)) {
+  // Mitsubishi / Hyundai / Kia AT
+  if (/(pajero|montero|xpander at|xpander cross at|outlander at|hyundai at|kia at)/i.test(t)) {
+    return ATF_DATABASE.mitsubishi_at;
+  }
+
+  // Nissan CVT
+  if (/(xtrail|x-trail|serena|grand livina|livina cvt|juke|march cvt)/i.test(t)) {
     return ATF_DATABASE.nissan_cvt;
+  }
+
+  // fallback kalau user tanya oli tapi mobil belum jelas
+  if (isAskingATF(t) || /(matic|otomatis|transmisi matic|cvt)/i.test(t)) {
+    return ATF_DATABASE.universal;
   }
 
   return null;
