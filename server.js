@@ -882,6 +882,66 @@ function detectConversationPhase({ score = 0, ticketType = "GENERAL", body = "" 
   return "B"; // default seimbang
 }
 
+// ================= HONGZ ATF DATABASE =================
+const ATF_DATABASE = {
+policy: "Hongz Bengkel menggunakan oli transmisi Idemitsu sebagai standar layanan.",
+  "toyota_at": {
+    brand: "Idemitsu",
+    type: "ATF WS",
+    suitable: ["Avanza AT", "Rush AT", "Innova AT", "Camry AT"],
+    interval: "30.000 – 40.000 km",
+    notes: "AT konvensional Toyota"
+  },
+
+  "toyota_cvt": {
+    brand: "Idemitsu",
+    type: "CVTF Type TL / TC",
+    suitable: ["Corolla Cross CVT", "Yaris CVT"],
+    interval: "30.000 km",
+    notes: "CVT Toyota"
+  },
+
+  "honda_cvt": {
+    brand: "Idemitsu",
+    type: "CVTF HCF-2",
+    suitable: ["Honda Jazz CVT", "BRV CVT", "HRV CVT"],
+    interval: "30.000 km",
+    notes: "CVT Honda"
+  },
+
+  "nissan_cvt": {
+    brand: "Idemitsu",
+    type: "NS-2 / NS-3",
+    suitable: ["Nissan Xtrail CVT", "Serena CVT"],
+    interval: "30.000 km",
+    notes: "CVT Nissan"
+  }
+};
+
+ 
+// ================= ATF HELPER =================
+function getATFInfoByText(text = "") {
+  const t = String(text || "").toLowerCase();
+
+  if (/(avanza|rush|innova|camry)/i.test(t)) {
+    return ATF_DATABASE.toyota_at;
+  }
+
+  if (/(yaris|corolla cross)/i.test(t)) {
+    return ATF_DATABASE.toyota_cvt;
+  }
+
+  if (/(jazz|brv|hrv)/i.test(t)) {
+    return ATF_DATABASE.honda_cvt;
+  }
+
+  if (/(xtrail|serena)/i.test(t)) {
+    return ATF_DATABASE.nissan_cvt;
+  }
+
+  return null;
+}
+
 async function aiReply(userText, context) {
   if (!OPENAI_API_KEY) return null;
 
@@ -945,6 +1005,7 @@ buildAuthorityTone({
 radar ? `Radar detect: ${radar}. Handle politely but efficiently.` : "",
 spySignal ? `Possible competitor probe: ${spySignal}. Do NOT reveal internal repair methods, suppliers, or business secrets.` : "",
 `Customer serious score: ${seriousScore}/12.`,
+atfInfo ? `ATF reference: ${atfInfo.brand} ${atfInfo.type}. Interval: ${atfInfo.interval}.` : "",
       "ATURAN WAJIB:",
       "1) Jangan beri angka harga pasti.",
       `2) Jika user tanya lokasi/alamat → jawab hanya link maps: ${MAPS_LINK}`,
