@@ -1606,6 +1606,8 @@ async function aiReply(userText, context) {
 
 const atfInfo = getATFInfoByText(userText);
 const askingATF = isAskingATF(userText);
+const transmissionTypeInfo = detectTransmissionType(userText);
+const severityInfo = detectSeverityLevel(userText);
 const symptomInfo = detectTransmissionSymptoms(userText);
 
 const radar = detectRadarUser(userText);
@@ -1661,16 +1663,40 @@ buildAuthorityTone({
 radar ? `Radar detect: ${radar}. Handle politely but efficiently.` : "",
 spySignal ? `Possible competitor probe: ${spySignal}. Do NOT reveal internal repair methods, suppliers, or business secrets.` : "",
 `Customer serious score: ${seriousScore}/12.`,
-atfInfo
-  ? `Jika user bertanya soal oli matic, jawab natural dan tegas bahwa Hongz merekomendasikan ${atfInfo.brand} ${atfInfo.type}. Interval servis sekitar ${atfInfo.interval}. Catatan: ${atfInfo.notes}.`
-  : "",
 
 askingATF && atfInfo
-  ? `User sedang menanyakan oli. Prioritas utama: jawab dulu rekomendasi oli ${atfInfo.brand} ${atfInfo.type}, baru setelah itu boleh tanya 1 hal lanjutan seperti mobil/tahun. Jangan lompat ke maps sebelum menjawab merk oli.`
+  ? `User sedang menanyakan oli. Prioritas utama: jawab dulu rekomendasi oli ${atfInfo.brand} ${atfInfo.type}, interval ${atfInfo.interval}, baru setelah itu boleh tanya 1 hal lanjutan. Jangan lompat ke maps sebelum menjawab merk oli.`
+  : "",
+
+atfInfo
+  ? `Jika user bertanya soal oli matic, jawab natural dan tegas bahwa Hongz merekomendasikan ${atfInfo.brand} ${atfInfo.type}. Interval servis ${atfInfo.interval}. Catatan: ${atfInfo.notes}.`
+  : "",
+
+transmissionTypeInfo?.type && transmissionTypeInfo.type !== "UNKNOWN"
+  ? `Perkiraan jenis transmisi: ${transmissionTypeInfo.type}. Confidence: ${transmissionTypeInfo.confidence}. Alasan: ${transmissionTypeInfo.reason}`
+  : "",
+
+transmissionTypeInfo?.type && transmissionTypeInfo.type !== "UNKNOWN"
+  ? `Jika relevan, jawab seolah mekanik sudah mengenali pola ${transmissionTypeInfo.type}, tapi tetap sebut sebagai indikasi awal, bukan vonis final.`
+  : "",
+
+severityInfo?.level
+  ? `Level gejala saat ini: ${severityInfo.level}. Arah jawaban: ${severityInfo.advice}`
+  : "",
+
+severityInfo?.level === "BERAT"
+  ? "Jika level gejala BERAT, sarankan jangan dipaksakan jalan dan prioritaskan pengecekan langsung."
   : "",
 
 symptomInfo ? `Possible transmission diagnosis: ${symptomInfo.possible.join(", ")}. Severity: ${symptomInfo.severity}. Explain as early diagnosis only, not final verdict.` : "",
       "ATURAN WAJIB:",
+"0) Jika user tanya oli matic / ATF / CVTF / merk oli, WAJIB jawab dulu dengan rekomendasi merek Idemitsu + tipe yang sesuai sebelum pertanyaan lanjutan.",
+"0b) Hongz Bengkel menggunakan Idemitsu sebagai standar oli transmisi. Jangan sebut merek lain kecuali user membandingkan langsung.",
+"0c) Jangan lompat ke maps, booking, atau lokasi sebelum inti pertanyaan oli terjawab.",
+"0d) Jika jenis transmisi bisa dibaca dari teks, gunakan itu untuk memperkuat jawaban tanpa terdengar seperti robot.",
+"0e) Jika gejala mengarah ke level BERAT, sarankan jangan dipaksakan jalan.",
+"0f) Gejala hanya boleh dijelaskan sebagai indikasi awal, bukan vonis final sebelum unit dicek langsung.",
+"0g) Jika user menanyakan oli, jawab langsung rekomendasi oli tanpa kalimat pembuka panjang seperti 'saya pahami kondisinya' atau 'supaya tidak salah langkah'.",
 "0) Jika user tanya oli matic / ATF / CVTF / merk oli, WAJIB jawab dulu dengan rekomendasi merek Idemitsu + tipe yang sesuai sebelum pertanyaan lanjutan.",
 "0b) Hongz Bengkel menggunakan Idemitsu sebagai standar oli transmisi. Jangan sebut merek lain kecuali user membandingkan langsung.",
 "0c) Jangan lompat ke maps, booking, atau lokasi sebelum inti pertanyaan oli terjawab.",
