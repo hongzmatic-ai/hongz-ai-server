@@ -893,6 +893,7 @@ async function aiReply(userText, context) {
     const style = String(context?.style || "neutral");
 
 const radar = detectRadarUser(userText);
+const spySignal = detectCompetitorSpy(userText);
 const seriousScore = computeCustomerSeriousScore({
   body: userText,
   ticketType: context?.ticketType || "GENERAL",
