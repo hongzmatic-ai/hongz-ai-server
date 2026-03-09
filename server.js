@@ -893,6 +893,18 @@ async function aiReply(userText, context) {
     const style = String(context?.style || "neutral");
 
 const radar = detectRadarUser(userText);
+const seriousScore = computeCustomerSeriousScore({
+  body: userText,
+  ticketType: context?.ticketType || "GENERAL",
+  hasLoc: !!context?.hasLoc,
+  hasVehicle: !!context?.hasVehicle,
+  hasYear: !!context?.hasYear,
+  buyingSignal: !!context?.buyingSignal,
+  isUrgent: String(context?.style || "").toLowerCase() === "urgent"
+});
+
+context = context || {};
+context.score = seriousScore;
 
 // ================= PHASE A/B/C -> laneRule =================
 const phase = detectConversationPhase({
@@ -1064,6 +1076,48 @@ function detectRadarUser(body = "") {
   return null;
 }
 
+function computeCustomerSeriousScore({
+  body = "",
+  ticketType = "GENERAL",
+  hasLoc = false,
+  hasVehicle = false,
+  hasYear = false,
+  buyingSignal = false,
+  isUrgent = false
+}) {
+  const t = String(body || "").toLowerCase();
+
+  let score = 0;
+
+  if (hasVehicle) score += 2;
+  if (hasYear) score += 1;
+
+  if (/(gejala|jedug|selip|slip|ngelos|gak jalan|tidak jalan|loss|hentak|delay|getar|dengung|kasar|overheat|tidak dingin|rpm naik)/i.test(t)) {
+    score += 2;
+  }
+
+  if (ticketType === "TOWING" || isUrgent || /(darurat|mogok|tidak bisa jalan|gak bisa jalan)/i.test(t)) {
+    score += 3;
+  }
+
+  if (hasLoc || /(share lokasi|kirim lokasi|posisi saya|di jalan)/i.test(t)) {
+    score += 3;
+  }
+
+  if (buyingSignal || /(booking|jadwal|besok|hari ini|datang|kapan bisa masuk)/i.test(t)) {
+    score += 3;
+  }
+
+  if (/(berapa harga|kisaran biaya|range biaya|murah|diskon|termurah)/i.test(t) && !hasVehicle) {
+    score -= 2;
+  }
+
+  if (/^(halo|hai|tes|test|p)$/i.test(t.trim())) {
+    score -= 2;
+  }
+
+  return Math.max(0, Math.min(score, 12));
+}
 
 // ================= PREFERRED GREETING MODE (SAFE PATCH) =================
 
