@@ -900,7 +900,7 @@ const ATF_DATABASE = {
       "Sigra AT",
       "Fortuner AT bensin"
     ],
-    interval: "30.000 - 40.000 km",
+    interval: "sekitar 20.000 km tergantung pemakaian"
     notes: "AT konvensional Toyota / Daihatsu"
   },
 
@@ -915,7 +915,7 @@ const ATF_DATABASE = {
       "Yaris Cross CVT",
       "Veloz CVT"
     ],
-    interval: "30.000 - 40.000 km",
+    interval: "sekitar 20.000 km tergantung pemakaian"
     notes: "CVT Toyota / Daihatsu modern"
   },
 
@@ -932,7 +932,7 @@ const ATF_DATABASE = {
       "City Hatchback CVT",
       "CR-V CVT"
     ],
-    interval: "30.000 - 40.000 km",
+    interval: "sekitar 20.000 km tergantung pemakaian"
     notes: "CVT Honda"
   },
 
@@ -946,7 +946,7 @@ const ATF_DATABASE = {
       "Xpander Cross AT",
       "Outlander AT"
     ],
-    interval: "30.000 - 40.000 km",
+    interval: "sekitar 20.000 km tergantung pemakaian"
     notes: "AT Mitsubishi / Hyundai / Kia tertentu"
   },
 
@@ -961,7 +961,7 @@ const ATF_DATABASE = {
       "Juke CVT",
       "March CVT"
     ],
-    interval: "30.000 - 40.000 km",
+    interval: "sekitar 20.000 km tergantung pemakaian"
     notes: "CVT Nissan"
   },
 
@@ -969,7 +969,7 @@ const ATF_DATABASE = {
     brand: "Idemitsu",
     type: "ATF sesuai spesifikasi gearbox",
     suitable: ["Perlu cek model mobil + tahun + tipe transmisi"],
-    interval: "30.000 - 40.000 km",
+    interval: "sekitar 20.000 km tergantung pemakaian"
     notes: "Fallback default Hongz"
   }
 };
