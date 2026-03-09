@@ -889,7 +889,10 @@ async function aiReply(userText, context) {
     const client = new OpenAI({ apiKey: OPENAI_API_KEY });
 
     // style dari context kalau ada (urgent/formal/casual/neutral)
+
     const style = String(context?.style || "neutral");
+
+const radar = detectRadarUser(userText);
 
 // ================= PHASE A/B/C -> laneRule =================
 const phase = detectConversationPhase({
