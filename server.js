@@ -1916,6 +1916,46 @@ function computeCustomerSeriousScore({
 
   let score = 0;
 
+// ada mobil disebut
+  if (hasVehicle || /(avanza|xenia|rush|terios|innova|camry|yaris|hrv|jazz|brio|mobilio|xpander|pajero|fortuner|serena|livina)/i.test(t)) {
+    score += 2;
+  }
+
+   ada tahun mobil
+  if (hasYear || /\b(19|20)\d{2}\b/.test(t)) {
+    score += 2;
+  }
+
+   ada lokasi
+  if (hasLoc || /(medan|alamat|share lokasi|kirim lokasi)/i.test(t)) {
+    score += 1;
+  }
+
+   ada gejala transmisi
+  if (/(nyentak|jedug|selip|gredek|ngelos|delay|loss|rpm naik|tidak jalan|gak jalan|getar|dengung)/i.test(t)) {
+    score += 2;
+  }
+
+   ada niat datang / booking
+  if (buyingSignal || /(booking|jadwal|hari ini|besok|datang|bisa cek)/i.test(t)) {
+    score += 3;
+  }
+
+  kondisi darurat
+  if (isUrgent || /(darurat|mogok|tidak bisa jalan|harus towing)/i.test(t)) {
+    score += 2;
+  }
+
+   hanya tanya harga tanpa data mobil
+  if (/(berapa harga|kisaran biaya|range biaya|murah|diskon)/i.test(t) && !hasVehicle) {
+    score -= 2;
+  }
+
+   chat sangat pendek
+  if (/^(halo|hai|tes|test|p)$/i.test(t.trim())) {
+    score -= 2;
+  }
+
   if (hasVehicle) score += 2;
   if (hasYear) score += 1;
 
