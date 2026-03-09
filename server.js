@@ -1120,6 +1120,30 @@ function computeCustomerSeriousScore({
   return Math.max(0, Math.min(score, 12));
 }
 
+// ================= HONGZ AI COMPETITOR SPY DETECTOR =================
+function detectCompetitorSpy(body = "") {
+  const t = String(body || "").toLowerCase();
+
+  const asksInternalProcess =
+    /(step|langkah|proses|alur kerja|cara kerja|bongkar apa saja|isi dalamnya)/i.test(t);
+
+  const asksSensitiveParts =
+    /(supplier|vendor|part apa|merek part|oli apa|material apa)/i.test(t);
+
+  const asksBusinessSecrets =
+    /(modal|untung|margin|harga modal|markup|rahasia bengkel)/i.test(t);
+
+  const tooManyTechQuestions =
+    /(overhaul|cvt|atf|torque converter|solenoid|valve body)/i.test(t) &&
+    (t.match(/\?/g) || []).length >= 2;
+
+  if (asksBusinessSecrets) return "BUSINESS_SECRET_PROBE";
+  if (asksSensitiveParts) return "SENSITIVE_PARTS_PROBE";
+  if (asksInternalProcess || tooManyTechQuestions) return "PROCESS_PROBE";
+
+  return null;
+}
+
 // ================= PREFERRED GREETING MODE (SAFE PATCH) =================
 
 // ENV toggle (aman kalau tidak diset di Render)
