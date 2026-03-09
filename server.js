@@ -942,6 +942,7 @@ buildAuthorityTone({
 }),
 "",
 radar ? `Radar detect: ${radar}. Handle politely but efficiently.` : "",
+`Customer serious score: ${seriousScore}/12.`,
       "ATURAN WAJIB:",
       "1) Jangan beri angka harga pasti.",
       `2) Jika user tanya lokasi/alamat → jawab hanya link maps: ${MAPS_LINK}`,
