@@ -1594,6 +1594,75 @@ function detectTransmissionSymptoms(text = "") {
   };
 }
 
+function detectBuyingSignal(text = "") {
+  const t = normalizeText(text);
+
+  const patterns = [
+    "mau servis",
+    "mau cek",
+    "bisa hari ini",
+    "bisa besok",
+    "mau datang",
+    "saya datang",
+    "datang sekarang",
+    "mau booking",
+    "booking",
+    "jadwal",
+    "siap datang",
+    "alamat mana",
+    "lokasi mana",
+    "share lokasi",
+    "bisa towing",
+    "minta towing",
+    "nomor admin",
+    "bisa dicek",
+    "mau periksa",
+    "mau ganti oli",
+    "langsung ke sana",
+    "bengkel buka jam berapa"
+  ];
+
+  const hits = patterns.filter(p => t.includes(p));
+  return {
+    matched: hits,
+    hitCount: hits.length,
+    isStrong: hits.length >= 1
+  };
+}
+
+function detectTireKickerSignal(text = "") {
+  const t = normalizeText(text);
+
+  const weakSignals = [
+    "cuma tanya",
+    "tanya dulu",
+    "kira kira",
+    "berapa aja",
+    "murah gak",
+    "bisa murah",
+    "diskon",
+    "paling murah",
+    "sekedar info",
+    "sekadar info",
+    "buat perbandingan",
+    "bengkel lain bilang",
+    "cara kerjanya gimana",
+    "isi apa saja",
+    "komponen apa saja",
+    "step by step nya apa",
+    "kalau bongkar berapa",
+    "belum tentu datang",
+    "nanti saya pikir dulu"
+  ];
+
+  const hits = weakSignals.filter(p => t.includes(p));
+  return {
+    matched: hits,
+    hitCount: hits.length,
+    isDetected: hits.length >= 2
+  };
+}
+
 async function aiReply(userText, context) {
   if (!OPENAI_API_KEY) return null;
 
