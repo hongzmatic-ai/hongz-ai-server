@@ -20,8 +20,8 @@ const {
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
   TWILIO_WHATSAPP_FROM, // e.g. "whatsapp:+14155238886" or "whatsapp:+1xxx"
-  ADMIN_WHATSAPP_TO,    // e.g. "whatsapp:+62813xxxx"
-  MONITOR_WHATSAPP_TO,  // e.g. "whatsapp:+62812xxxx" (radar)
+  ADMIN_WHATSAPP_TO,    // e.g. "whatsapp:+6281375430728"
+  MONITOR_WHATSAPP_TO,  // e.g. "whatsapp:+6281260628100" (radar)
 
   // Branding
   BIZ_NAME = "Hongz Bengkel – Spesialis Transmisi Matic",
