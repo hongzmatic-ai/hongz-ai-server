@@ -1793,7 +1793,16 @@ async function aiReply(userText, context) {
 const atfInfo = getATFInfoByText(userText);
 const askingATF = isAskingATF(userText);
 const transmissionTypeInfo = detectTransmissionType(userText);
-const severityInfo = detectSeverityLevel(userText);
+const severityInfo =
+ detectSeverityLevel(userText);
+
+const seriousInfo = {
+  lane: severityInfo?.severity === "HIGH" ? "A" :
+        severityInfo?.severity === "LOW" ? "C" : "B",
+  score: severityInfo?.severity === "HIGH" ? 85 :
+         severityInfo?.severity === "LOW" ? 30 : 55
+};
+
 const symptomInfo = detectTransmissionSymptoms(userText);
 
 const radar = detectRadarUser(userText);
