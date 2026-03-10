@@ -2432,7 +2432,6 @@ else if (slipMode) {
 else if (oliMode) {
   ticket.type = "OLI";
   saveDBFile(db);
-  return oliPrompt(style);
 }
 
 // 4️⃣ OVERHAUL
@@ -2518,6 +2517,27 @@ else if (noStart) {
 // 7) Default fallback
 else {
   ticket.type = "GENERAL";
+}
+
+// =============================
+// AI RESPONSE (GENERAL / ASK_OIL / DIAGNOSIS)
+// =============================
+
+try {
+
+  const intent = detectIntent(body);
+
+  const aiReply = await askAI({
+    text: body,
+    intent,
+    ticket,
+    from
+  });
+
+  return replyTwiML(res, aiReply);
+
+} catch (e) {
+  console.error("AI reply error:", e);
 }
 
  // 🔥 PRIORITY BOOST + ESCALATION (AC ONLY)
