@@ -1807,7 +1807,7 @@ const symptomInfo = detectTransmissionSymptoms(userText);
 
 const radar = detectRadarUser(userText);
 const spySignal = detectCompetitorSpy(userText);
-const intent = detectCustomerIntent(userText);
+const intent = context?.intent || detectCustomerIntent(userText);
 
 const mechanicRead = (() => {
   const lines = [];
