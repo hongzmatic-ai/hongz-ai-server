@@ -1591,8 +1591,7 @@ const TRANSMISSION_SYMPTOMS = [
     severity: "critical"
   }
 ];
-,
-{
+
   id: "SYM_51",
   keywords: ["tarikan berat", "mobil terasa berat"],
   possible: ["tekanan oli rendah", "kampas mulai aus", "torque converter tidak efisien"],
