@@ -1591,6 +1591,67 @@ const TRANSMISSION_SYMPTOMS = [
     severity: "critical"
   }
 ];
+,
+{
+  id: "SYM_51",
+  keywords: ["tarikan berat", "mobil terasa berat"],
+  possible: ["tekanan oli rendah", "kampas mulai aus", "torque converter tidak efisien"],
+  severity: "medium"
+},
+{
+  id: "SYM_52",
+  keywords: ["getar saat pindah gigi"],
+  possible: ["lock up torque converter tidak stabil", "solenoid shift tidak halus"],
+  severity: "medium"
+},
+{
+  id: "SYM_53",
+  keywords: ["bunyi saat stop"],
+  possible: ["mounting mesin/transmisi", "torque converter"],
+  severity: "low"
+},
+{
+  id: "SYM_54",
+  keywords: ["rpm tinggi saat start"],
+  possible: ["rasio cvt tidak naik", "belt cvt aus"],
+  severity: "high"
+},
+{
+  id: "SYM_55",
+  keywords: ["transmisi panas cepat"],
+  possible: ["cooler tersumbat", "oli transmisi sudah menurun"],
+  severity: "high"
+},
+{
+  id: "SYM_56",
+  keywords: ["mobil loncat saat gas"],
+  possible: ["solenoid tidak stabil", "sensor throttle tidak sinkron"],
+  severity: "medium"
+},
+{
+  id: "SYM_57",
+  keywords: ["tidak mau maju setelah berhenti"],
+  possible: ["tekanan oli drop", "kampas maju lemah"],
+  severity: "high"
+},
+{
+  id: "SYM_58",
+  keywords: ["suara kasar saat jalan pelan"],
+  possible: ["bearing transmisi", "gear set aus"],
+  severity: "medium"
+},
+{
+  id: "SYM_59",
+  keywords: ["tarikan lambat"],
+  possible: ["belt cvt mulai lemah", "kampas selip"],
+  severity: "medium"
+},
+{
+  id: "SYM_60",
+  keywords: ["mobil seperti ditahan"],
+  possible: ["lock up torque converter macet", "valve body tidak stabil"],
+  severity: "medium"
+}
 
 function detectTransmissionSymptoms(text = "") {
   const t = String(text || "").toLowerCase();
