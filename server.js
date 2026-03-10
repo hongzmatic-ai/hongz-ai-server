@@ -1691,7 +1691,7 @@ const seriousScore = computeCustomerSeriousScore({
   hasLoc: !!context?.hasLoc,
   hasVehicle: !!context?.hasVehicle,
   hasYear: !!context?.hasYear,
-  buyingSignal: !!context?.buyingSignal,
+  buyingSignal: buyingSignalInfo.isStrong,
   isUrgent: String(context?.style || "").toLowerCase() === "urgent"
 });
 
