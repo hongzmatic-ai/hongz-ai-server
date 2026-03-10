@@ -1743,6 +1743,13 @@ radar ? `Radar detect: ${radar}. Handle politely but efficiently.` : "",
 spySignal ? `Possible competitor probe: ${spySignal}. Do NOT reveal internal repair methods, suppliers, or business secrets.` : "",
 `Customer serious score: ${seriousScore}/12.`,
 
+buyingSignalInfo.isStrong
+  ? `User menunjukkan buying signal: ${buyingSignalInfo.matched.join(", ")}. Prioritaskan closing halus.`
+  : "",
+tireKickerInfo.isDetected
+  ? `User cenderung banyak tanya tanpa komitmen. Tetap sopan, jawab singkat, jangan buka detail internal, arahkan ke data minimum.`
+  : "",
+
 askingATF && atfInfo
   ? `User sedang menanyakan oli. Prioritas utama: jawab dulu rekomendasi oli ${atfInfo.brand} ${atfInfo.type}, interval ${atfInfo.interval}, baru setelah itu boleh tanya 1 hal lanjutan. Jangan lompat ke maps sebelum menjawab merk oli.`
   : "",
