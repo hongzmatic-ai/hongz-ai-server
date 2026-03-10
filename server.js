@@ -1653,26 +1653,60 @@ const TRANSMISSION_SYMPTOMS = [
 }
 ];
 
+// ================= TRANSMISSION SYMPTOM DETECTOR =================
 function detectTransmissionSymptoms(text = "") {
   const t = String(text || "").toLowerCase();
 
+  const severityRank = { low: 1, medium: 2, high: 3, critical: 4 };
+  const severityWeight = { low: 1, medium: 2, high: 4, critical: 6 };
+
   const matches = TRANSMISSION_SYMPTOMS.filter(item =>
-    item.keywords.some(k => t.includes(k.toLowerCase()))
+    item.keywords.some(k => t.includes(String(k).toLowerCase()))
   );
 
   if (!matches.length) return null;
 
-  const top = matches.slice(0, 3);
+  const sorted = [...matches].sort(
+    (a, b) => (severityRank[b.severity] || 0) - (severityRank[a.severity] || 0)
+  );
 
-  const possible = [...new Set(top.flatMap(x => x.possible))].slice(0, 4);
-  const severityRank = { low: 1, medium: 2, high: 3, critical: 4 };
-  const topSeverity = top.reduce((acc, cur) =>
-    severityRank[cur.severity] > severityRank[acc] ? cur.severity : acc
-  , "low");
+  const top = sorted.slice(0, 3);
+
+  const topSeverity = top.reduce((acc, cur) => {
+    return (severityRank[cur.severity] || 0) > (severityRank[acc] || 0)
+      ? cur.severity
+      : acc;
+  }, "low");
+
+  const scoreMap = {};
+
+  for (const item of top) {
+    const weight = severityWeight[item.severity] || 1;
+
+    for (const p of item.possible) {
+      const key = String(p).toLowerCase().trim();
+
+      if (!scoreMap[key]) {
+        scoreMap[key] = {
+          label: p,
+          score: 0,
+          sources: []
+        };
+      }
+
+      scoreMap[key].score += weight;
+      scoreMap[key].sources.push(item.id);
+    }
+  }
+
+  const ranked = Object.values(scoreMap)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
 
   return {
     matchedIds: top.map(x => x.id),
-    possible,
+    matchedCount: top.length,
+    possible: ranked.map(x => x.label),
     severity: topSeverity
   };
 }
