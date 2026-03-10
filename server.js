@@ -1703,6 +1703,7 @@ const symptomInfo = detectTransmissionSymptoms(userText);
 
 const radar = detectRadarUser(userText);
 const spySignal = detectCompetitorSpy(userText);
+const intent = detectCustomerIntent(userText);
 
 const buyingSignalInfo = detectBuyingSignal(userText);
 const tireKickerInfo = detectTireKickerSignal(userText);
@@ -1723,6 +1724,7 @@ if (tireKickerInfo.isDetected) {
 
 context = context || {};
 context.score = seriousScore;
+context.intent = intent;
 
 // Simpan biar bisa dipakai di sys prompt
 // context.laneRule sudah ada di file Papa
@@ -1764,6 +1766,7 @@ buildAuthorityTone({
 radar ? `Radar detect: ${radar}. Handle politely but efficiently.` : "",
 spySignal ? `Possible competitor probe: ${spySignal}. Do NOT reveal internal repair methods, suppliers, or business secrets.` : "",
 `Customer serious score: ${seriousScore}/12.`,
+`Customer intent: ${context.intent}.`,
 
 buyingSignalInfo.isStrong
   ? `User menunjukkan buying signal: ${buyingSignalInfo.matched.join(", ")}. Prioritaskan closing halus.`
@@ -1798,6 +1801,25 @@ severityInfo?.level === "BERAT"
 
 symptomInfo ? `Possible transmission diagnosis: ${symptomInfo.possible.join(", ")}. Severity: ${symptomInfo.severity}. Explain as early diagnosis only, not final verdict.` : "",
       "ATURAN WAJIB:",
+context.intent === "EMERGENCY"
+  ? "Jika intent EMERGENCY: sarankan jangan dipaksakan jalan dan prioritaskan pengecekan langsung atau towing."
+  : "",
+
+context.intent === "READY_SERVICE"
+  ? "Jika intent READY_SERVICE: arahkan langsung ke jadwal cek, kedatangan, atau booking."
+  : "",
+
+context.intent === "PRICE_SHOPPING"
+  ? "Jika intent PRICE_SHOPPING: jawab singkat, jangan buka detail panjang, arahkan ke pengecekan unit."
+  : "",
+
+context.intent === "ASK_OIL"
+  ? "Jika intent ASK_OIL: jawab langsung rekomendasi oli Idemitsu yang sesuai tanpa pembuka panjang."
+  : "",
+
+context.intent === "DIAGNOSIS"
+  ? "Jika intent DIAGNOSIS: jawab seperti mekanik senior, fokus pola gejala dan langkah aman berikutnya."
+  : "",
 "RULE LANE A: jika skor serius tinggi, jawab lebih tegas, fokus solusi, dan arahkan ke booking / cek / datang.",
 "RULE LANE B: jika skor sedang, jawab inti dulu lalu minta data minimum: mobil + tahun + gejala.",
 "RULE LANE C: jika skor rendah, tetap sopan tapi pendek. Jangan terlalu banyak edukasi gratis. Arahkan ke info minimum atau ajak datang cek.",
