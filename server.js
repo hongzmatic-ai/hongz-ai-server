@@ -1913,72 +1913,53 @@ function computeCustomerSeriousScore({
   isUrgent = false
 }) {
   const t = String(body || "").toLowerCase();
-
   let score = 0;
 
- ada mobil disebut
-  if (hasVehicle || /(avanza|xenia|rush|terios|innova|camry|yaris|hrv|jazz|brio|mobilio|xpander|pajero|fortuner|serena|livina)/i.test(t)) {
+  // ada mobil disebut
+  if (
+    hasVehicle ||
+    /(avanza|xenia|rush|terios|innova|camry|yaris|hrv|hr-v|jazz|brio|mobilio|xpander|pajero|fortuner|serena|livina)/i.test(t)
+  ) {
     score += 2;
   }
 
-   ada tahun mobil
+  // ada tahun mobil
   if (hasYear || /\b(19|20)\d{2}\b/.test(t)) {
     score += 2;
   }
 
-   ada lokasi
-  if (hasLoc || /(medan|alamat|share lokasi|kirim lokasi)/i.test(t)) {
+  // ada lokasi
+  if (hasLoc || /(medan|alamat|share lokasi|kirim lokasi|posisi saya|di jalan)/i.test(t)) {
     score += 1;
   }
 
-   ada gejala transmisi
-  if (/(nyentak|jedug|selip|gredek|ngelos|delay|loss|rpm naik|tidak jalan|gak jalan|getar|dengung)/i.test(t)) {
+  // ada gejala transmisi
+  if (
+    /(nyentak|jedug|selip|slip|gredek|ngelos|delay|loss|rpm naik|tidak jalan|gak jalan|getar|dengung|kasar|overheat)/i.test(t)
+  ) {
     score += 2;
   }
 
-   ada niat datang / booking
-  if (buyingSignal || /(booking|jadwal|hari ini|besok|datang|bisa cek)/i.test(t)) {
+  // ada niat datang / booking
+  if (buyingSignal || /(booking|jadwal|hari ini|besok|datang|bisa cek|kapan bisa masuk)/i.test(t)) {
     score += 3;
   }
 
-  kondisi darurat
-  if (isUrgent || /(darurat|mogok|tidak bisa jalan|harus towing)/i.test(t)) {
+  // kondisi darurat
+  if (
+    ticketType === "TOWING" ||
+    isUrgent ||
+    /(darurat|mogok|tidak bisa jalan|gak bisa jalan|harus towing)/i.test(t)
+  ) {
     score += 2;
   }
 
-   hanya tanya harga tanpa data mobil
-  if (/(berapa harga|kisaran biaya|range biaya|murah|diskon)/i.test(t) && !hasVehicle) {
-    score -= 2;
-  }
-
-   chat sangat pendek
-  if (/^(halo|hai|tes|test|p)$/i.test(t.trim())) {
-    score -= 2;
-  }
-
-  if (hasVehicle) score += 2;
-  if (hasYear) score += 1;
-
-  if (/(gejala|jedug|selip|slip|ngelos|gak jalan|tidak jalan|loss|hentak|delay|getar|dengung|kasar|overheat|tidak dingin|rpm naik)/i.test(t)) {
-    score += 2;
-  }
-
-  if (ticketType === "TOWING" || isUrgent || /(darurat|mogok|tidak bisa jalan|gak bisa jalan)/i.test(t)) {
-    score += 3;
-  }
-
-  if (hasLoc || /(share lokasi|kirim lokasi|posisi saya|di jalan)/i.test(t)) {
-    score += 3;
-  }
-
-  if (buyingSignal || /(booking|jadwal|besok|hari ini|datang|kapan bisa masuk)/i.test(t)) {
-    score += 3;
-  }
-
+  // hanya tanya harga tanpa data mobil
   if (/(berapa harga|kisaran biaya|range biaya|murah|diskon|termurah)/i.test(t) && !hasVehicle) {
     score -= 2;
   }
 
+  // chat sangat pendek
   if (/^(halo|hai|tes|test|p)$/i.test(t.trim())) {
     score -= 2;
   }
