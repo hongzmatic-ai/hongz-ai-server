@@ -1651,7 +1651,7 @@ const TRANSMISSION_SYMPTOMS = [
   possible: ["lock up torque converter macet", "valve body tidak stabil"],
   severity: "medium"
 }
-};
+];
 
 function detectTransmissionSymptoms(text = "") {
   const t = String(text || "").toLowerCase();
