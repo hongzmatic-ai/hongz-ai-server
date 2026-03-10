@@ -1685,7 +1685,7 @@ const spySignal = detectCompetitorSpy(userText);
 const buyingSignalInfo = detectBuyingSignal(userText);
 const tireKickerInfo = detectTireKickerSignal(userText);
 
-const seriousScore = computeCustomerSeriousScore({
+let seriousScore = computeCustomerSeriousScore({
   body: userText,
   ticketType: context?.ticketType || "GENERAL",
   hasLoc: !!context?.hasLoc,
@@ -1695,8 +1695,15 @@ const seriousScore = computeCustomerSeriousScore({
   isUrgent: String(context?.style || "").toLowerCase() === "urgent"
 });
 
+if (tireKickerInfo.isDetected) {
+  seriousScore = Math.max(0, seriousScore - 2);
+}
+
 context = context || {};
 context.score = seriousScore;
+
+// Simpan biar bisa dipakai di sys prompt
+// context.laneRule sudah ada di file Papa
 
 // ================= PHASE A/B/C -> laneRule =================
 const phase = detectConversationPhase({
@@ -1705,7 +1712,6 @@ const phase = detectConversationPhase({
   body: userText
 });
 
-// Simpan biar bisa dipakai di sys prompt (context?.laneRule sudah ada di file Papa)
 context = context || {};
 context.phase = phase;
 
