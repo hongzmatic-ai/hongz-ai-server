@@ -1681,6 +1681,10 @@ const symptomInfo = detectTransmissionSymptoms(userText);
 
 const radar = detectRadarUser(userText);
 const spySignal = detectCompetitorSpy(userText);
+
+const buyingSignalInfo = detectBuyingSignal(userText);
+const tireKickerInfo = detectTireKickerSignal(userText);
+
 const seriousScore = computeCustomerSeriousScore({
   body: userText,
   ticketType: context?.ticketType || "GENERAL",
