@@ -1590,7 +1590,7 @@ const TRANSMISSION_SYMPTOMS = [
     possible: ["torque converter", "kampas utama habis", "tekanan oli transmisi hilang"],
     severity: "critical"
   },
-{
+  {
 
   id: "SYM_51",
   keywords: ["tarikan berat", "mobil terasa berat"],
@@ -1651,6 +1651,7 @@ const TRANSMISSION_SYMPTOMS = [
   possible: ["lock up torque converter macet", "valve body tidak stabil"],
   severity: "medium"
 }
+};
 
 function detectTransmissionSymptoms(text = "") {
   const t = String(text || "").toLowerCase();
