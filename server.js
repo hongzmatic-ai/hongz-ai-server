@@ -2524,17 +2524,17 @@ else {
 // =============================
 
 try {
-
   const intent = detectIntent(body);
 
-  const aiReply = await askAI({
-    text: body,
+  const text = await aiReply(body, {
+    style,
     intent,
-    ticket,
-    from
+    phase: ticket.type || "GENERAL"
   });
 
-  return replyTwiML(res, aiReply);
+  if (text) {
+    return replyTwiML(res, text);
+  }
 
 } catch (e) {
   console.error("AI reply error:", e);
