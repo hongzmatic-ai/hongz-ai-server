@@ -1813,10 +1813,10 @@ const mechanicRead = (() => {
   const lines = [];
 
   if (askingATF && atfInfo) {
-    lines.push(
-      `User sedang menanyakan oli transmisi. Jawab dulu merek oli: ${atfInfo.brand} ${atfInfo.type}. Interval servis: ${atfInfo.interval}. Catatan: ${atfInfo.notes}. Jangan langsung arahkan booking sebelum pertanyaan oli dijawab.`
-    );
-  }
+  lines.push(
+    `User hanya menanyakan oli transmisi. Kalimat pertama wajib langsung jawab rekomendasi oli: ${atfInfo.brand} ${atfInfo.type}. Jangan buka dengan empati, jangan sebut gejala kalau user tidak menyebut gejala. Setelah itu minta maksimal 2-3 data minimum: tahun mobil, jenis transmisi, dan riwayat ganti oli. Jangan arahkan booking sebelum inti pertanyaan oli terjawab.`
+  );
+}
 
   if (transmissionTypeInfo?.type && transmissionTypeInfo.type !== "UNKNOWN") {
     lines.push(
@@ -1831,16 +1831,16 @@ const mechanicRead = (() => {
   }
 
   if (symptomInfo?.possible?.length) {
-    lines.push(
-      `Kemungkinan kerusakan awal: ${symptomInfo.possible.join(", ")}.`
-    );
-  }
+  lines.push(
+    `Untuk gejala transmisi, sebut hanya 2-3 kemungkinan penyebab paling masuk akal: ${symptomInfo.possible.join(", ")}. Jangan terdengar seperti artikel atau customer service. Langsung beri arah cek dan minta data minimum yang relevan.`
+  );
+}
 
   if (symptomInfo?.severity === "critical" || severityInfo?.level === "BERAT") {
-    lines.push(
-      `Jika gejala berat, sarankan jangan dipaksakan jalan dan lakukan pengecekan segera.`
-    );
-  }
+  lines.push(
+    `Jika gejala berat, jawab singkat dan tegas: jangan dipaksakan jalan, prioritaskan cek langsung.`
+  );
+}
 
   return lines.join(" ");
 })();
@@ -1881,13 +1881,13 @@ context.phase = phase;
 
 if (phase === "A") {
   context.laneRule =
-    "PHASE A (LEADER): jawab tegas, ringkas, arahkan tindakan. Maks 2 pertanyaan. Prioritaskan safety & keputusan.";
+    "PHASE A (LEADER): jawab tegas, ringkas, langsung ke inti. Maksimal 2 pertanyaan. Prioritaskan safety dan keputusan. Jangan pakai opener empati umum.";
 } else if (phase === "C") {
   context.laneRule =
-    "PHASE C (CLOSING): fokus booking/jadwal. Tawarkan 2 slot waktu + minta lokasi bila perlu. Jangan panjang.";
+    "PHASE C (SHORT): jawab singkat, sopan, hemat kata. Jangan edukasi panjang. Jangan pakai opener umum. Jika user siap booking, baru arahkan jadwal.";
 } else {
   context.laneRule =
-    "PHASE B (NORMAL): jawab profesional, bantu diagnosa singkat. Maks 2 pertanyaan (mobil+tahun+gejala).";
+    "PHASE B (GUIDE): jawab inti dulu, lalu minta data minimum. Maksimal 3 pertanyaan penting. Jangan terdengar seperti artikel atau customer service.";
 }
 
     // 🧠 Natural Elite prompt (GPT yang atur, tapi kita kasih “bahasa” biar gak kelihatan sistem)
