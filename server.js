@@ -1589,8 +1589,8 @@ const TRANSMISSION_SYMPTOMS = [
     keywords: ["mobil tidak mau gerak", "tidak bisa jalan", "mati gerak"],
     possible: ["torque converter", "kampas utama habis", "tekanan oli transmisi hilang"],
     severity: "critical"
-  }
-];
+  },
+{
 
   id: "SYM_51",
   keywords: ["tarikan berat", "mobil terasa berat"],
