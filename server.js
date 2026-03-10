@@ -2524,10 +2524,13 @@ else {
 // =============================
 
 try {
-  const intent = detectIntent(body);
+  const intent =
+    oliMode ? "ASK_OIL" :
+    (slipMode || overhaulMode) ? "DIAGNOSIS" :
+    "GENERAL";
 
   const text = await aiReply(body, {
-    style,
+    style: "neutral",
     intent,
     phase: ticket.type || "GENERAL"
   });
