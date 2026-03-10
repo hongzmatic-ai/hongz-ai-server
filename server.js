@@ -1800,6 +1800,42 @@ const radar = detectRadarUser(userText);
 const spySignal = detectCompetitorSpy(userText);
 const intent = detectCustomerIntent(userText);
 
+const mechanicRead = (() => {
+  const lines = [];
+
+  if (askingATF && atfInfo) {
+    lines.push(
+      `User sedang menanyakan oli transmisi. Jawab dulu merek oli: ${atfInfo.brand} ${atfInfo.type}. Interval servis: ${atfInfo.interval}. Catatan: ${atfInfo.notes}. Jangan langsung arahkan booking sebelum pertanyaan oli dijawab.`
+    );
+  }
+
+  if (transmissionTypeInfo?.type && transmissionTypeInfo.type !== "UNKNOWN") {
+    lines.push(
+      `Jenis transmisi kemungkinan: ${transmissionTypeInfo.type}. Confidence ${transmissionTypeInfo.confidence}.`
+    );
+  }
+
+  if (severityInfo?.level) {
+    lines.push(
+      `Level kerusakan indikasi: ${severityInfo.level}. Arah saran: ${severityInfo.advice}.`
+    );
+  }
+
+  if (symptomInfo?.possible?.length) {
+    lines.push(
+      `Kemungkinan kerusakan awal: ${symptomInfo.possible.join(", ")}.`
+    );
+  }
+
+  if (symptomInfo?.severity === "critical" || severityInfo?.level === "BERAT") {
+    lines.push(
+      `Jika gejala berat, sarankan jangan dipaksakan jalan dan lakukan pengecekan segera.`
+    );
+  }
+
+  return lines.join(" ");
+})();
+
 const buyingSignalInfo = detectBuyingSignal(userText);
 const tireKickerInfo = detectTireKickerSignal(userText);
 
@@ -1862,6 +1898,7 @@ radar ? `Radar detect: ${radar}. Handle politely but efficiently.` : "",
 spySignal ? `Possible competitor probe: ${spySignal}. Do NOT reveal internal repair methods, suppliers, or business secrets.` : "",
 `Customer serious score: ${seriousScore}/12.`,
 `Customer intent: ${context.intent}.`,
+mechanicRead ? `MECHANIC ANALYSIS: ${mechanicRead}` : "",
 
 buyingSignalInfo.isStrong
   ? `User menunjukkan buying signal: ${buyingSignalInfo.matched.join(", ")}. Prioritaskan closing halus.`
@@ -1895,7 +1932,9 @@ severityInfo?.level === "BERAT"
   : "",
 
 symptomInfo ? `Possible transmission diagnosis: ${symptomInfo.possible.join(", ")}. Severity: ${symptomInfo.severity}. Explain as early diagnosis only, not final verdict.` : "",
+
       "ATURAN WAJIB:",
+
 context.intent === "EMERGENCY"
   ? "Jika intent EMERGENCY: sarankan jangan dipaksakan jalan dan prioritaskan pengecekan langsung atau towing."
   : "",
@@ -1915,8 +1954,11 @@ context.intent === "ASK_OIL"
 context.intent === "DIAGNOSIS"
   ? "Jika intent DIAGNOSIS: jawab seperti mekanik senior, fokus pola gejala dan langkah aman berikutnya."
   : "",
+
 "RULE LANE A: jika skor serius tinggi, jawab lebih tegas, fokus solusi, dan arahkan ke booking / cek / datang.",
+
 "RULE LANE B: jika skor sedang, jawab inti dulu lalu minta data minimum: mobil + tahun + gejala.",
+
 "RULE LANE C: jika skor rendah, tetap sopan tapi pendek. Jangan terlalu banyak edukasi gratis. Arahkan ke info minimum atau ajak datang cek.",
 
 seriousInfo.lane === "A"
@@ -1932,14 +1974,21 @@ seriousInfo.lane === "C"
   : "",
 
 "0) Jika user tanya oli matic / ATF / CVTF / merk oli, WAJIB jawab dulu dengan rekomendasi merek Idemitsu + tipe yang sesuai sebelum pertanyaan lanjutan.",
+
 "0b) Hongz Bengkel menggunakan Idemitsu sebagai standar oli transmisi. Jangan sebut merek lain kecuali user membandingkan langsung.",
 "0c) Jangan lompat ke maps, booking, atau lokasi sebelum inti pertanyaan oli terjawab.",
+
 "0d) Jika jenis transmisi bisa dibaca dari teks, gunakan itu untuk memperkuat jawaban tanpa terdengar seperti robot.",
 "0e) Jika gejala mengarah ke level BERAT, sarankan jangan dipaksakan jalan.",
+
 "0f) Gejala hanya boleh dijelaskan sebagai indikasi awal, bukan vonis final sebelum unit dicek langsung.",
+
 "0g) Jika user menanyakan oli, jawab langsung rekomendasi oli tanpa kalimat pembuka panjang seperti 'saya pahami kondisinya' atau 'supaya tidak salah langkah'.",
+
 "0) Jika user tanya oli matic / ATF / CVTF / merk oli, WAJIB jawab dulu dengan rekomendasi merek Idemitsu + tipe yang sesuai sebelum pertanyaan lanjutan.",
+
 "0b) Hongz Bengkel menggunakan Idemitsu sebagai standar oli transmisi. Jangan sebut merek lain kecuali user membandingkan langsung.",
+
 "0c) Jangan lompat ke maps, booking, atau lokasi sebelum inti pertanyaan oli terjawab.",
 
       "1) Jangan beri angka harga pasti.",
