@@ -1067,6 +1067,28 @@ function getATFInfoByText(text = "") {
   return null;
 }
 
+// ================= INTENT DETECTOR =================
+function detectCustomerIntent(text = "") {
+  const t = String(text).toLowerCase();
+
+  if (/(mogok|tidak bisa jalan|gak jalan|darurat|towing)/i.test(t))
+    return "EMERGENCY";
+
+  if (/(booking|jadwal|bisa cek|datang hari ini|besok bisa|cek langsung)/i.test(t))
+    return "READY_SERVICE";
+
+  if (/(berapa harga|kisaran biaya|range biaya|bongkar berapa)/i.test(t))
+    return "PRICE_SHOPPING";
+
+  if (/(oli matic|oli cvt|atf|cvtf|oli transmisi)/i.test(t))
+    return "ASK_OIL";
+
+  if (/(kenapa|gejala|nyentak|jedug|selip|loss|rpm naik)/i.test(t))
+    return "DIAGNOSIS";
+
+  return "GENERAL";
+}
+
 // ================= AUTO DETECT TRANSMISSION TYPE =================
 function detectTransmissionType(text = "") {
   const t = normalizeText(text);
