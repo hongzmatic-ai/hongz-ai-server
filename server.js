@@ -2432,7 +2432,7 @@ else if (slipMode) {
 else if (oliMode) {
   ticket.type = "OLI";
   saveDBFile(db);
-  return replyTwiML(res, oliPrompt(style));
+  return replyTwiml(res, "DEBUG OLI MODE TERPICU");
 }
 
 // 4️⃣ OVERHAUL
